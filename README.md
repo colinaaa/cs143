@@ -25,7 +25,7 @@ make install
 ## Usage
 
 ```fish
- docker run -it -v &#34;$PWD:/root/cs143&#34; --name cs143 colinaaa/cs143:latest
+ docker run -it -v (pwd):/root/cs143 --name cs143 colinaaa/cs143:latest
 ```
 
 ## Author
