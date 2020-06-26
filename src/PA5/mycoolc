@@ -1,2 +1,1 @@
-#!/bin/csh -f
-./lexer $* | ./parser $* | ./semant $* | ./cgen $*
+/usr/class/cs143/cool/src/PA5/mycoolc
