@@ -175,6 +175,7 @@ FALSE           f[Aa][Ll][Ss][Ee]
 <SINGLE_STRING>{
   \n                        {
 	cool_yylval.error_msg = "Unterminated string constant";
+        curr_lineno++;
 	BEGIN(INITIAL);
 	return (ERROR);
   }
@@ -183,25 +184,28 @@ FALSE           f[Aa][Ll][Ss][Ee]
 	BEGIN(INITIAL);
 	return (ERROR);
   }
-  ([^\\\"]|\\(.|\n))*            {
+  ([^\\\"\n]|\\(.|\n))*            {
 	  str = yytext;
 	  // std::cout << "\n-----" << str << "_____" << std::endl << std::endl;
           for (auto it = str.begin(), end = str.end(); it < end; ++it) {
+            if (*it == '\n') {
+              curr_lineno++;
+            }
             if (*it == '\\') {
               str.erase(it);
               switch(*it) {
                 case 'n':
                   *it = '\n';
-                break;
+                  break;
                 case 't':
                   *it = '\t';
-                break;
+                  break;
                 case 'b':
-                *it = '\b';
+                  *it = '\b';
                   break;
                 case 'f':
                   *it = '\f';
-                break;
+                  break;
                 default:
                   break;
               }
