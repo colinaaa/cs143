@@ -49,32 +49,177 @@ extern YYSTYPE cool_yylval;
  * Define names for regular expressions here.
  */
 
+IDSUFFIX        [a-zA-Z0-9_]
+
 DARROW          =>
 
+/* keywords */
+
+CLASS           [Cc][Ll][Aa][Ss][Ss]
+ELSE            [Ee][Ll][Ss][Ee]
+IF              [Ii][Ff]
+FI              [Ff][Ii]
+IN              [Ii][Nn]
+INHERITS        [Ii][Nn][Hh][Ee][Rr][Ii][Tt][Ss]
+LET             [Ll][Ee][Tt]
+LOOP            [Ll][Oo][Oo][Pp]
+POOL            [Pp][Oo][Oo][Ll]
+THEN            [Tt][Hh][Ee][Nn]
+WHILE           [Ww][Hh][Ii][Ll][Ee]
+CASE            [Cc][Aa][Ss][Ee]
+ESAC            [Ee][Ss][Aa][Cc]
+OF              [Oo][Ff]
+NEW             [Nn][Ee][Ww]
+ISVOID          [Ii][Ss][Vv][Oo][Ii][Dd]
+NOT             [Nn][Oo][Tt]
+TRUE            t[Rr][Uu][Ee]
+FALSE           f[Aa][Ll][Ss][Ee]
+
+%x COMMENT
+%x SINGLE_STRING
+  std::string str = "";
+
+
 %%
+
+ /*
+ * Newline
+ */
+"\n"           { curr_lineno++; }
+[ \t\b\f\r\v]+     {  }
 
  /*
   *  Nested comments
   */
 
+"(*"           { BEGIN(COMMENT); }
+<COMMENT>{
+"*)" BEGIN(INITIAL);
+<<EOF>> {
+  cool_yylval.error_msg = "EOF in comment";
+  BEGIN(INITIAL);
+  return (ERROR);
+}
+.  ;
+\n { curr_lineno++; }
+}
+
+
+ /*
+  * Single line comment
+  */
+"--".*         ;
 
  /*
   *  The multiple-character operators.
   */
 {DARROW}		{ return (DARROW); }
+"."         { return ('.'); }
+"@"         { return ('@'); }
+"~"         { return ('~'); }
+"*"         { return ('*'); }
+"/"         { return ('/'); }
+"+"         { return ('+'); }
+"-"         { return ('-'); }
+"<="        { return (LE); }
+"<"         { return ('<'); }
+"="         { return ('='); }
+"<-"        { return (ASSIGN); }
+
+";"         { return (';'); }
+"("         { return ('('); }
+")"         { return (')'); }
+"{"         { return ('{'); }
+"}"         { return ('}'); }
+","         { return (','); }
+":"         { return (':'); }
+
 
  /*
   * Keywords are case-insensitive except for the values true and false,
   * which must begin with a lower-case letter.
   */
 
+{CLASS}     { return (CLASS); }
+{ELSE}      { return (ELSE); }
+{IF}        { return (IF); }
+{FI}        { return (FI); }
+{IN}        { return (IN); }
+{INHERITS}  { return (INHERITS); }
+{LET}       { return (LET); }
+{LOOP}      { return (LOOP); }
+{POOL}      { return (POOL); }
+{THEN}      { return (THEN); }
+{WHILE}     { return (WHILE); }
+{CASE}      { return (CASE); }
+{ESAC}      { return (ESAC); }
+{OF}        { return (OF); }
+{NEW}       { return (NEW); }
+{ISVOID}    { return (ISVOID); }
+{NOT}       { return (NOT); }
+
+ /*
+  *  Boolean constants
+	*/
+{TRUE}      { cool_yylval.boolean = 1; return (BOOL_CONST); }
+{FALSE}     { cool_yylval.boolean = 0; return (BOOL_CONST); }
 
  /*
   *  String constants (C syntax)
-  *  Escape sequence \c is accepted for all characters c. Except for 
+  *  Escape sequence \c is accepted for all characters c. Except for
   *  \n \t \b \f, the result is c.
   *
   */
 
+\"                          { BEGIN(SINGLE_STRING); str = ""; }
+<SINGLE_STRING>{
+  \n                        {
+	cool_yylval.error_msg = "Unterminated string constant";
+	BEGIN(INITIAL);
+	return (ERROR);
+  }
+  <<EOF>>                   {
+	cool_yylval.error_msg = "EOF in string constant";
+	BEGIN(INITIAL);
+	return (ERROR);
+  }
+  ([^\\\"]|\\(.|\n))*            {
+	  str = yytext;
+	  // std::cout << "\n-----" << str << "_____" << std::endl << std::endl;
+          for (auto it = str.begin(), end = str.end(); it < end; ++it) {
+            if (*it == '\\') {
+              str.erase(it);
+              switch(*it) {
+                case 'n':
+                  *it = '\n';
+                break;
+                case 't':
+                  *it = '\t';
+                break;
+                case 'b':
+                *it = '\b';
+                  break;
+                case 'f':
+                  *it = '\f';
+                break;
+                default:
+                  break;
+              }
+            }
+          }
+
+	}
+  \"                        {
+	  BEGIN(INITIAL);
+          cool_yylval.symbol = stringtable.add_string((char*)str.data());
+	  return (STR_CONST);
+	}
+  .                         ;
+}
+
+[a-z]{IDSUFFIX}*  { cool_yylval.symbol = idtable.add_string(yytext); return (OBJECTID); }
+[A-Z]{IDSUFFIX}*  { cool_yylval.symbol = idtable.add_string(yytext); return (TYPEID); }
+
+[0-9]+ { cool_yylval.symbol = inttable.add_string(yytext); return (INT_CONST); }
 
 %%
