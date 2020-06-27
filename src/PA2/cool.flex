@@ -175,10 +175,12 @@ FALSE           f[Aa][Ll][Ss][Ee]
 \" { BEGIN(SINGLE_STRING); memset(string_buf_ptr = string_buf, 0, sizeof(string_buf)); }
 <SINGLE_STRING>{
   \n {
-        cool_yylval.error_msg = "Unterminated string constant";
-        curr_lineno++;
         BEGIN(INITIAL);
-        return (ERROR);
+        if (string_buf_ptr != nullptr) {
+          cool_yylval.error_msg = "Unterminated string constant";
+          curr_lineno++;
+          return (ERROR);
+        }
   }
   <<EOF>> {
         cool_yylval.error_msg = "EOF in string constant";
@@ -194,6 +196,7 @@ FALSE           f[Aa][Ll][Ss][Ee]
         // printf("-------%s_______\n", string_buf);
         // std::cout << yyleng << ' ' << str.length() << std::endl;
         string_buf_ptr = string_buf;
+        int cnt = 0;
         for (auto it = yytext; *it != '\0'; it++, string_buf_ptr++) {
           if (*it == '\n') {
             curr_lineno++;
@@ -218,16 +221,23 @@ FALSE           f[Aa][Ll][Ss][Ee]
             }
           }
           *string_buf_ptr = *it;
+          cnt++;
         }
         *string_buf_ptr = '\0';
-      }
-  \"                        {
-          BEGIN(INITIAL);
-          if (string_buf_ptr != nullptr) {
-            cool_yylval.symbol = stringtable.add_string(string_buf);
-            return (STR_CONST);
-          }
+        // std::cout << strlen(string_buf) << ' ' << cnt << std::endl;
+        if (cnt >= MAX_STR_CONST) {
+          cool_yylval.error_msg = "String constant too long";
+          string_buf_ptr = nullptr;
+          return (ERROR);
         }
+      }
+  \"  {
+        BEGIN(INITIAL);
+        if (string_buf_ptr != nullptr) {
+          cool_yylval.symbol = stringtable.add_string(string_buf);
+          return (STR_CONST);
+        }
+      }
   . ;
 }
 
