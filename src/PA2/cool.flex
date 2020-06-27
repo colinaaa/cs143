@@ -78,6 +78,7 @@ FALSE           f[Aa][Ll][Ss][Ee]
 %x COMMENT
 %x SINGLE_STRING
   std::string str = "";
+  int nested_comments = 0;
 
 
 %%
@@ -92,16 +93,16 @@ FALSE           f[Aa][Ll][Ss][Ee]
   *  Nested comments
   */
 
-"(*"           { BEGIN(COMMENT); }
+<COMMENT,INITIAL>"(*" { BEGIN(COMMENT); nested_comments++; }
 <COMMENT>{
-"*)" BEGIN(INITIAL);
-<<EOF>> {
-  cool_yylval.error_msg = "EOF in comment";
-  BEGIN(INITIAL);
-  return (ERROR);
-}
-.  ;
-\n { curr_lineno++; }
+  "*)"    --nested_comments == 0 ? BEGIN(INITIAL) : 0;
+  <<EOF>> {
+    cool_yylval.error_msg = "EOF in comment";
+    BEGIN(INITIAL);
+    return (ERROR);
+  }
+  \n { curr_lineno++; }
+  .  ;
 }
 
 
@@ -113,7 +114,7 @@ FALSE           f[Aa][Ll][Ss][Ee]
  /*
   *  The multiple-character operators.
   */
-{DARROW}		{ return (DARROW); }
+{DARROW}    { return (DARROW); }
 "."         { return ('.'); }
 "@"         { return ('@'); }
 "~"         { return ('~'); }
@@ -225,5 +226,10 @@ FALSE           f[Aa][Ll][Ss][Ee]
 [A-Z]{IDSUFFIX}*  { cool_yylval.symbol = idtable.add_string(yytext); return (TYPEID); }
 
 [0-9]+ { cool_yylval.symbol = inttable.add_string(yytext); return (INT_CONST); }
+
+  /*
+   *  Unknown token
+   */
+. { cool_yylval.error_msg = yytext; return (ERROR); }
 
 %%
