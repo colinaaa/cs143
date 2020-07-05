@@ -148,6 +148,15 @@ documentation for details). */
 %type <expression> expr
 
 /* Precedence declarations go here. */
+%right ASSIGN
+%precedence NOT
+%nonassoc LE '<' '='
+%left '+' '-'
+%left '*' '/'
+%left ISVOID
+%precedence '~'
+%left '@'
+%left '.'
 
 %%
 /*
