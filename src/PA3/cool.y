@@ -169,9 +169,11 @@ class_list:
   class     /* single class */
 { $$ = single_Classes($1);
 parse_results = $$; }
-| class_list class	/* several classes */
+| class_list class  /* several classes */
 { $$ = append_Classes($1,single_Classes($2));
 parse_results = $$; }
+| error ';' class
+{ $$ = single_Classes($3); yyerrok; }
 ;
 
 /* If no parent is specified, the class inherits from the Object class. */
@@ -186,8 +188,6 @@ stringtable.add_string(curr_filename)); }
 feature_list:
 /* empty */
 { $$ = nil_Features(); }
-| feature              /* single feature */
-{ $$ = single_Features($1); }
 | feature_list feature /* multiple features */
 { $$ = append_Features($1, single_Features($2)); }
 ;
@@ -199,6 +199,7 @@ feature:
 { $$ = attr($1, $3, $5); }
 | OBJECTID '(' formal_list ')' ':' TYPEID '{' expr '}' ';'
 { $$ = method($1, $3, $6, $8); }
+| error ';' {}
 ;
 
 formal_list:
@@ -229,7 +230,7 @@ expr_list_simicolon:
 { $$ = single_Expressions($1); }
 | expr_list_simicolon expr ';'
 { $$ = append_Expressions($1, single_Expressions($2)); }
-| expr_list_simicolon error ';'
+| error ';'
 { yyerrok; }
 ;
 
