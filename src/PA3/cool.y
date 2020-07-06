@@ -345,6 +345,8 @@ let_binding_list:
 { $$ = $1; }
 | let_binding_list ',' let_binding
 { auto bind = $1; bind->set_body($3); $$ = $3; }
+| error ',' let_binding
+{ yyerrok; $$ = $3; }
 ;
 
 let_binding:
