@@ -149,12 +149,12 @@ documentation for details). */
 
 /* Precedence declarations go here. */
 %right ASSIGN
-%precedence NOT
+%left NOT
 %nonassoc LE '<' '='
 %left '+' '-'
 %left '*' '/'
 %left ISVOID
-%precedence '~'
+%left '~'
 %left '@'
 %left '.'
 
@@ -183,14 +183,13 @@ stringtable.add_string(curr_filename)); }
 ;
 
 /* Feature list may be empty, but no empty features in list. */
-feature_list:          /* empty */
+feature_list:
+/* empty */
 { $$ = nil_Features(); }
 | feature              /* single feature */
 { $$ = single_Features($1); }
 | feature_list feature /* multiple features */
 { $$ = append_Features($1, single_Features($2)); }
-| feature_list error ';'
-{ yyerrok; }
 ;
 
 feature:
@@ -202,7 +201,8 @@ feature:
 { $$ = method($1, $3, $6, $8); }
 ;
 
-formal_list:          /* empty */
+formal_list:
+/* empty */
 { $$ = nil_Formals(); }
 | formal              /* single formal */
 { $$ = single_Formals($1); }
@@ -225,9 +225,7 @@ expr_list_comma:
 ;
 
 expr_list_simicolon:
-/* empty */
-{ $$ = nil_Expressions(); }
-| expr ';'               /* single expr */
+  expr ';'               /* single expr */
 { $$ = single_Expressions($1); }
 | expr_list_simicolon expr ';'
 { $$ = append_Expressions($1, single_Expressions($2)); }
@@ -236,11 +234,8 @@ expr_list_simicolon:
 ;
 
 expr:
-/* empty */
-{ $$ = no_expr(); }
-
 /* 7.1 Constants */
-| STR_CONST
+  STR_CONST
 { $$ = string_const($1); }
 | INT_CONST
 { $$ = int_const($1); }
