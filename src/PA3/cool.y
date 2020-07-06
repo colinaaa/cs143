@@ -147,7 +147,13 @@ documentation for details). */
 %type <expressions> expr_list_simicolon expr_list_comma
 %type <expression> expr
 
+%type <expression> let_expr
+%type <expression> optional_assign
+%type <expression> let_binding_list
+%type <expression> let_binding
+
 /* Precedence declarations go here. */
+%left IN
 %right ASSIGN
 %left NOT
 %nonassoc LE '<' '='
@@ -193,10 +199,8 @@ feature_list:
 ;
 
 feature:
-  OBJECTID ':' TYPEID ';' /* attribute */
-{ $$ = attr($1, $3, no_expr()); }
-| OBJECTID ':' TYPEID ASSIGN expr ';' /* attribute with initialize */
-{ $$ = attr($1, $3, $5); }
+  OBJECTID ':' TYPEID optional_assign ';' /* attribute with initialize */
+{ $$ = attr($1, $3, $4); }
 | OBJECTID '(' formal_list ')' ':' TYPEID '{' expr '}' ';'
 { $$ = method($1, $3, $6, $8); }
 | error ';' {}
@@ -233,6 +237,7 @@ expr_list_simicolon:
 | error ';'
 { yyerrok; }
 ;
+
 
 expr:
 /* 7.1 Constants */
@@ -272,11 +277,8 @@ expr:
 { $$ = block($2); }
 
 /* 7.8 Let */
-| LET OBJECTID ':' TYPEID IN expr
-{ $$ = let($2, $4, no_expr(), $6); }
-| LET OBJECTID ':' TYPEID ASSIGN expr IN expr
-{ $$ = let($2, $4, $6, $8); }
-// TODO: add init of let
+| let_expr
+{ $$ = $1; }
 
 /* 7.9 Case */
 | CASE expr OF case_list ESAC
@@ -317,8 +319,6 @@ expr:
 case_list:
 /* empty */
 { $$ = nil_Cases(); }
-| case
-{ $$ = single_Cases($1); }
 | case_list case
 { $$ = append_Cases($1, single_Cases($2)); }
 ;
@@ -326,6 +326,37 @@ case_list:
 case:
 OBJECTID ':' TYPEID DARROW expr ';'
 { $$ = branch($1, $3, $5); }
+;
+
+let_expr:
+LET let_binding_list IN expr
+{
+  auto bind = $2;
+  bind->set_body($4);
+  while (bind->parent) {
+    bind = bind->parent;
+  }
+  $$ = bind;
+}
+;
+
+let_binding_list:
+  let_binding
+{ $$ = $1; }
+| let_binding_list ',' let_binding
+{ auto bind = $1; bind->set_body($3); $$ = $3; }
+;
+
+let_binding:
+OBJECTID ':' TYPEID optional_assign
+{ auto res = let($1, $3, $4, no_expr()); $$ = res; }
+;
+
+optional_assign:
+/* empty */
+{ $$ = no_expr(); }
+| ASSIGN expr
+{ $$ = $2; }
 ;
 /* end of grammar */
 %%

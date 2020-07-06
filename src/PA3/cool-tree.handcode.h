@@ -95,12 +95,19 @@ Symbol get_type() { return type; }           \
 Expression set_type(Symbol s) { type = s; return this; } \
 virtual void dump_with_types(ostream&,int) = 0;  \
 void dump_type(ostream&, int);               \
+Expression parent; \
+virtual void set_body(const Expression e) {  }\
 Expression_class() { type = (Symbol) NULL; }
 
-
+#define let_EXTRAS \
+void set_body(const Expression e) override {\
+	e->parent = this; \
+	body = e;\
+}
 
 #define Expression_SHARED_EXTRAS           \
-void dump_with_types(ostream&,int); 
+void dump_with_types(ostream&,int);
 
 
 #endif
+
