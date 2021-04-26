@@ -50,6 +50,7 @@ extern YYSTYPE cool_yylval;
   */
 
 IDSUFFIX        [a-zA-Z0-9_]
+INTPREFIX       [0-9]+
 
 DARROW          =>
 
@@ -245,7 +246,19 @@ FALSE           f[Aa][Ll][Ss][Ee]
 [A-Z]{IDSUFFIX}*  { cool_yylval.symbol = idtable.add_string(yytext); return (TYPEID); }
 
 [0-9]+ { cool_yylval.symbol = inttable.add_string(yytext); return (INT_CONST); }
-[0-9]+[a-zA-Z] { cool_yylval.error_msg = "Int literial with char"; return (ERROR); }
+[0-9]+[a-zA-Z] { 
+  const char last = yytext[yyleng - 1];
+  switch (last) {
+    case 'x':
+    case 'X':
+    case 'u':
+    case 'U':
+      cool_yylval.symbol = inttable.add_string(yytext);
+      return (INT_CONST);
+  }
+  cool_yylval.error_msg = "Int literial with char"; 
+  return (ERROR); 
+}
 
 ([0-9]*\.[0-9]+)|([0-9]+\.)[lLuU]? { cool_yylval.symbol = floattable.add_string(yytext); return (FLOAT_CONST); }
 
