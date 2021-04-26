@@ -246,6 +246,19 @@ void program_class::semant()
 
     /* some semantic analysis code may go here */
 
+    /**
+     * @brief first trav to build symbol table
+     */
+    auto *symtab = new SymbolTable<char *, int>();
+    symtab->enterscope();
+    cerr << "symtab... " << endl;
+    for (auto cl = classes->first(); classes->more(cl); cl = classes->next(cl)) {
+        auto node = classes->nth(cl);
+        node->trav(symtab, 0);
+    }
+    cerr << "symtab end" << endl;
+    symtab->exitscope();
+
     if (classtable->errors()) {
 	cerr << "Compilation halted due to static semantic errors." << endl;
 	exit(1);

@@ -10,8 +10,16 @@
 
 
 #include "tree.h"
+#include "symtab.h"
 #include "cool-tree.handcode.h"
 
+using SymTab = SymbolTable<char *, int>;
+using std::string, std::to_string;
+
+extern int semant_debug;
+
+extern int i_;
+int new_id();
 
 // define the class for phylum
 // define simple phylum - Program
@@ -35,6 +43,12 @@ class Class__class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Class_(); }
    virtual Class_ copy_Class_() = 0;
+   /**
+    * @brief trav through a Class Node
+    * 
+    * @return int the error number
+    */
+   virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Class__EXTRAS
    Class__EXTRAS
@@ -49,6 +63,12 @@ class Feature_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Feature(); }
    virtual Feature copy_Feature() = 0;
+   /**
+    * @brief trav through a Feature Node
+    * 
+    * @return int the error number
+    */
+   virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
@@ -63,6 +83,12 @@ class Formal_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Formal(); }
    virtual Formal copy_Formal() = 0;
+   /**
+    * @brief trav through a Formal Node
+    * 
+    * @return int the error number
+    */
+   virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Formal_EXTRAS
    Formal_EXTRAS
@@ -77,6 +103,12 @@ class Expression_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Expression(); }
    virtual Expression copy_Expression() = 0;
+   /**
+    * @brief trav through a Expression Node
+    * 
+    * @return int the error number
+    */
+   // virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
@@ -91,6 +123,12 @@ class Case_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Case(); }
    virtual Case copy_Case() = 0;
+   /**
+    * @brief trav through a Case Node
+    * 
+    * @return int the error number
+    */
+   // virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Case_EXTRAS
    Case_EXTRAS
@@ -161,6 +199,17 @@ public:
    }
    Class_ copy_Class_();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav class: " << name << endl;
+      symtab->enterscope();
+      for (auto it = features->first(); features->more(it); it = features->next(it)) {
+         auto node = features->nth(it);
+         errors += node->trav(symtab, padding + 2);
+      }
+      symtab->exitscope();
+      return errors;
+   };
 
 #ifdef Class__SHARED_EXTRAS
    Class__SHARED_EXTRAS
@@ -187,6 +236,30 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding = 0) final {
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav method: " << name << endl;
+
+      // new method scope
+      symtab->enterscope();
+
+      for (auto it = formals->first(); formals->more(it); it = formals->next(it)) {
+         auto node = formals->nth(it);
+         errors += node->trav(symtab, padding + 2);
+      }
+      if (semant_debug) {
+         cout << pad(padding) << "entering method body, dumping symtab" << endl;
+         symtab->dump();
+      }
+
+
+      // go into method body expr
+      // expr->trav(symtab, padding + 2);
+
+      // exit this method scope
+      symtab->exitscope();
+      return errors;
+   };
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -211,6 +284,15 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding = 0) final {
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav attr: " << name << endl;
+
+      // TODO: dup ids
+
+      symtab->addid(name->get_string(), new int(new_id()));
+      return errors;
+   };
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -233,6 +315,15 @@ public:
    }
    Formal copy_Formal();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding = 0) final {
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav formal: " << name << endl;
+
+      // TODO: dup ids
+
+      symtab->addid(name->get_string(), new int(new_id()));
+      return errors;
+   };
 
 #ifdef Formal_SHARED_EXTRAS
    Formal_SHARED_EXTRAS
@@ -279,6 +370,15 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   // int trav(SymTab* symtab, int padding) final {
+   //    int errors = 0;
+   //    if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
+   //    for (auto it = features->first(); features->more(it); it = features->next(it)) {
+   //       auto node = features->nth(it);
+   //       errors += node->trav(symtab, padding + 2);
+   //    }
+   //    return errors;
+   // };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
