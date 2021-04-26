@@ -108,7 +108,7 @@ public:
     * 
     * @return int the error number
     */
-   // virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
@@ -128,7 +128,7 @@ public:
     * 
     * @return int the error number
     */
-   // virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(SymTab* symtab, int pad) = 0;
 
 #ifdef Case_EXTRAS
    Case_EXTRAS
@@ -254,7 +254,7 @@ public:
 
 
       // go into method body expr
-      // expr->trav(symtab, padding + 2);
+      expr->trav(symtab, padding + 2);
 
       // exit this method scope
       symtab->exitscope();
@@ -348,6 +348,23 @@ public:
    }
    Case copy_Case();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding = 0) final {
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav branch: " << name << ":" << type_decl << endl;
+
+      // new case match scope
+      symtab->enterscope();
+      symtab->addid(name->get_string(), new int(new_id()));
+
+      if (semant_debug) {
+         cout << pad(padding) << "entering case match, dumping symtab:" << endl;
+         symtab->dump();
+      }
+
+      expr->trav(symtab, padding + 2);
+      symtab->exitscope();
+      return errors;
+   }
 
 #ifdef Case_SHARED_EXTRAS
    Case_SHARED_EXTRAS
@@ -370,15 +387,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   // int trav(SymTab* symtab, int padding) final {
-   //    int errors = 0;
-   //    if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
-   //    for (auto it = features->first(); features->more(it); it = features->next(it)) {
-   //       auto node = features->nth(it);
-   //       errors += node->trav(symtab, padding + 2);
-   //    }
-   //    return errors;
-   // };
+   int trav(SymTab* symtab, int padding) final {
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
+      errors += expr->trav(symtab, padding + 2);
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -405,6 +419,19 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // <expr>@<type>.id(<expr>, ... <expr>)
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav static dispatch: " << name << endl;
+
+      errors += expr->trav(symtab, padding + 2);
+
+      for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
+         auto node = actual->nth(it);
+         errors += node->trav(symtab, padding + 2);
+      }
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -429,6 +456,21 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // id(<expr>, ... <expr>)
+      // short hand for self.<id>(...)
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav dispatch: " << name << endl;
+
+      errors += expr->trav(symtab, padding + 2);
+
+      for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
+         auto node = actual->nth(it);
+         errors += node->trav(symtab, padding + 2);
+      }
+      return errors;
+   };
+
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -453,6 +495,17 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // if <expr> then <expr> else <expr> fi
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav cond: " << endl;
+
+      errors += pred->trav(symtab, padding + 2);
+      errors += then_exp->trav(symtab, padding + 2);
+      errors += else_exp->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -475,6 +528,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // while <expr> loop <expr> pool
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav loop: " << endl;
+
+      errors += pred->trav(symtab, padding + 2);
+      errors += body->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -497,6 +560,20 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // case expr of [[ID : TYPE => expr; ]] + esac
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav typecase: " << endl;
+
+      errors += expr->trav(symtab, padding + 2);
+
+      for (auto it = cases->first(); cases->more(it); it = cases->next(it)) {
+         auto node = cases->nth(it);
+         node->trav(symtab, padding + 2);
+      }
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -517,6 +594,18 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // { <expr>; ... <expr>; }
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav block: " << endl;
+
+      for (auto it = body->first(); body->more(it); it = body->next(it)) {
+         auto node = body->nth(it);
+         errors += node->trav(symtab, padding + 2);
+      }
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -543,6 +632,25 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // let <id1> : <type1> [ <- <expr1> ], ..., <idn> : <typen> [ <- <exprn> ] in <expr>
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav let: " << identifier << ':' << type_decl << endl;
+
+      errors += init->trav(symtab, padding + 2);
+      // enter let binding scope
+      symtab->enterscope();
+      symtab->addid(identifier->get_string(), new int(new_id()));
+
+      if (semant_debug) {
+         cout << pad(padding) << "entering let body, dump symtab: " << endl;
+         symtab->dump();
+      }
+      errors += body->trav(symtab, padding + 2);
+      symtab->exitscope();
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -565,6 +673,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 + e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav plus: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -587,6 +705,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 - e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav sub: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -609,6 +737,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 * e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav mul: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -631,6 +769,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 / e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav divide: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -651,6 +799,15 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // ~e1
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav neg: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -673,6 +830,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 < e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav lt: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -695,6 +862,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 = e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav eq: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -717,6 +894,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // e1 <= e2
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav leq: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+      errors += e2->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -737,6 +924,15 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // (e1)
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav comp: " << endl;
+
+      errors += e1->trav(symtab, padding + 2);
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -757,6 +953,14 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // 123
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav int_const: " << token << endl;
+
+      return errors;
+   };
+
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -777,6 +981,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // true
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav bool_const: " << val << endl;
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -797,6 +1008,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // "abcd"
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav string_const: " << token << endl;
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -817,6 +1035,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // new A
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav new: " << type_name << endl;
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -837,6 +1062,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // new A
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav isvoid: " << endl;
+
+      e1->trav(symtab, padding + 2);
+
+      return errors;
+   };
+
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -855,6 +1090,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // ??
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav noexpr: " << endl;
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -875,6 +1117,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   int trav(SymTab* symtab, int padding) final {
+      // ??
+      int errors = 0;
+      if (semant_debug) cout << pad(padding) << "trav object: " << name << endl;
+
+      return errors;
+   };
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
