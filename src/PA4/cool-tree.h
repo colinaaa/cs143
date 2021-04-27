@@ -50,6 +50,13 @@ public:
     */
    virtual int trav(SymTab* symtab, int pad) = 0;
 
+   /**
+    * @brief Get the name object
+    * 
+    * @return char* the name
+    */
+   virtual char* get_name() const = 0;
+
 #ifdef Class__EXTRAS
    Class__EXTRAS
 #endif
@@ -210,6 +217,10 @@ public:
       symtab->exitscope();
       return errors;
    };
+
+   char* get_name() const final {
+      return (name->get_string());
+   }
 
 #ifdef Class__SHARED_EXTRAS
    Class__SHARED_EXTRAS

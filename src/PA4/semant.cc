@@ -251,9 +251,14 @@ void program_class::semant()
      */
     auto *symtab = new SymbolTable<char *, int>();
     symtab->enterscope();
+
+    for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
+        auto node = classes->nth(it);
+        symtab->addid(node->get_name(), new int(new_id()));
+    }
     cerr << "symtab... " << endl;
-    for (auto cl = classes->first(); classes->more(cl); cl = classes->next(cl)) {
-        auto node = classes->nth(cl);
+    for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
+        auto node = classes->nth(it);
         node->trav(symtab, 0);
     }
     cerr << "symtab end" << endl;
