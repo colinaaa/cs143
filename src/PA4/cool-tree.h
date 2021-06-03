@@ -21,6 +21,8 @@ extern int semant_debug;
 extern int i_;
 int new_id();
 
+#define ERROR(MSG) errors++; cerr << filename << ":" << get_line_number() << ": " << (MSG) << endl;
+
 // define the class for phylum
 // define simple phylum - Program
 typedef class Program_class *Program;
@@ -48,7 +50,7 @@ public:
     * 
     * @return int the error number
     */
-   virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
    /**
     * @brief Get the name object
@@ -75,7 +77,7 @@ public:
     * 
     * @return int the error number
     */
-   virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
@@ -95,7 +97,7 @@ public:
     * 
     * @return int the error number
     */
-   virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
 #ifdef Formal_EXTRAS
    Formal_EXTRAS
@@ -115,7 +117,7 @@ public:
     * 
     * @return int the error number
     */
-   virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
@@ -135,7 +137,7 @@ public:
     * 
     * @return int the error number
     */
-   virtual int trav(SymTab* symtab, int pad) = 0;
+   virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
 #ifdef Case_EXTRAS
    Case_EXTRAS
@@ -206,13 +208,13 @@ public:
    }
    Class_ copy_Class_();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav class: " << name << endl;
       symtab->enterscope();
       for (auto it = features->first(); features->more(it); it = features->next(it)) {
          auto node = features->nth(it);
-         errors += node->trav(symtab, padding + 2);
+         errors += node->trav(filename, symtab, padding + 2);
       }
       symtab->exitscope();
       return errors;
@@ -247,7 +249,7 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding = 0) final {
+   int trav(char* filename, SymTab* symtab, int padding = 0) final {
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav method: " << name << endl;
 
@@ -256,7 +258,7 @@ public:
 
       for (auto it = formals->first(); formals->more(it); it = formals->next(it)) {
          auto node = formals->nth(it);
-         errors += node->trav(symtab, padding + 2);
+         errors += node->trav(filename, symtab, padding + 2);
       }
       if (semant_debug) {
          cout << pad(padding) << "entering method body, dumping symtab" << endl;
@@ -265,7 +267,7 @@ public:
 
 
       // go into method body expr
-      expr->trav(symtab, padding + 2);
+      errors += expr->trav(filename, symtab, padding + 2);
 
       // exit this method scope
       symtab->exitscope();
@@ -295,11 +297,19 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding = 0) final {
+   int trav(char* filename, SymTab* symtab, int padding = 0) final {
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav attr: " << name << endl;
 
-      // TODO: dup ids
+      if (strcmp(name->get_string(), "self") == 0) {
+         ERROR("'self' cannot be the name of an attribute.")
+      }
+
+      if (symtab->probe(name->get_string()) != NULL) {
+         ERROR("duplicated id: " + string(name->get_string()))
+      }
+      
+      errors += init->trav(filename, symtab, padding + 2);
 
       symtab->addid(name->get_string(), new int(new_id()));
       return errors;
@@ -326,11 +336,13 @@ public:
    }
    Formal copy_Formal();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding = 0) final {
+   int trav(char* filename, SymTab* symtab, int padding = 0) final {
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav formal: " << name << endl;
 
-      // TODO: dup ids
+      if (symtab->probe(name->get_string())) {
+         ERROR("Formal parameter " + string(name->get_string()) + " is multiply defined.")
+      }
 
       symtab->addid(name->get_string(), new int(new_id()));
       return errors;
@@ -359,7 +371,7 @@ public:
    }
    Case copy_Case();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding = 0) final {
+   int trav(char* filename, SymTab* symtab, int padding = 0) final {
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav branch: " << name << ":" << type_decl << endl;
 
@@ -372,7 +384,7 @@ public:
          symtab->dump();
       }
 
-      expr->trav(symtab, padding + 2);
+      expr->trav(filename, symtab, padding + 2);
       symtab->exitscope();
       return errors;
    }
@@ -398,10 +410,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
-      errors += expr->trav(symtab, padding + 2);
+      errors += expr->trav(filename, symtab, padding + 2);
+      
+      type = expr->type;
+
       return errors;
    };
 
@@ -430,17 +445,18 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // <expr>@<type>.id(<expr>, ... <expr>)
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav static dispatch: " << name << endl;
 
-      errors += expr->trav(symtab, padding + 2);
+      errors += expr->trav(filename, symtab, padding + 2);
 
       for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
          auto node = actual->nth(it);
-         errors += node->trav(symtab, padding + 2);
+         errors += node->trav(filename, symtab, padding + 2);
       }
+      // TODO: disptch type
       return errors;
    };
 
@@ -467,18 +483,19 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // id(<expr>, ... <expr>)
       // short hand for self.<id>(...)
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav dispatch: " << name << endl;
-
-      errors += expr->trav(symtab, padding + 2);
+      
 
       for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
          auto node = actual->nth(it);
-         errors += node->trav(symtab, padding + 2);
+         errors += node->trav(filename, symtab, padding + 2);
       }
+
+      // TODO: disptch type
       return errors;
    };
 
@@ -506,14 +523,16 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // if <expr> then <expr> else <expr> fi
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav cond: " << endl;
 
-      errors += pred->trav(symtab, padding + 2);
-      errors += then_exp->trav(symtab, padding + 2);
-      errors += else_exp->trav(symtab, padding + 2);
+      errors += pred->trav(filename, symtab, padding + 2);
+      errors += then_exp->trav(filename, symtab, padding + 2);
+      errors += else_exp->trav(filename, symtab, padding + 2);
+
+      type = idtable.add_string("_no_type");
 
       return errors;
    };
@@ -539,13 +558,15 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // while <expr> loop <expr> pool
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav loop: " << endl;
 
-      errors += pred->trav(symtab, padding + 2);
-      errors += body->trav(symtab, padding + 2);
+      errors += pred->trav(filename, symtab, padding + 2);
+      errors += body->trav(filename, symtab, padding + 2);
+
+      type = idtable.add_string("_no_type");
 
       return errors;
    };
@@ -571,17 +592,19 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // case expr of [[ID : TYPE => expr; ]] + esac
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav typecase: " << endl;
 
-      errors += expr->trav(symtab, padding + 2);
+      errors += expr->trav(filename, symtab, padding + 2);
 
       for (auto it = cases->first(); cases->more(it); it = cases->next(it)) {
          auto node = cases->nth(it);
-         node->trav(symtab, padding + 2);
+         node->trav(filename, symtab, padding + 2);
       }
+      
+      type = expr->type;
 
       return errors;
    };
@@ -605,14 +628,15 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // { <expr>; ... <expr>; }
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav block: " << endl;
 
       for (auto it = body->first(); body->more(it); it = body->next(it)) {
          auto node = body->nth(it);
-         errors += node->trav(symtab, padding + 2);
+         errors += node->trav(filename, symtab, padding + 2);
+         type = idtable.add_string("_no_type");
       }
 
       return errors;
@@ -643,12 +667,17 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // let <id1> : <type1> [ <- <expr1> ], ..., <idn> : <typen> [ <- <exprn> ] in <expr>
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav let: " << identifier << ':' << type_decl << endl;
 
-      errors += init->trav(symtab, padding + 2);
+      errors += init->trav(filename, symtab, padding + 2);
+      if (init->type != idtable.add_string(type_decl->get_string())) {
+         // TODO: deal with inherience
+         // error msg
+         ERROR("")
+      }
       // enter let binding scope
       symtab->enterscope();
       symtab->addid(identifier->get_string(), new int(new_id()));
@@ -657,8 +686,10 @@ public:
          cout << pad(padding) << "entering let body, dump symtab: " << endl;
          symtab->dump();
       }
-      errors += body->trav(symtab, padding + 2);
+      errors += body->trav(filename, symtab, padding + 2);
       symtab->exitscope();
+
+      type = body->type;
 
       return errors;
    };
@@ -684,13 +715,19 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 + e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav plus: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+      // cout << e1->type->get_string() << ' ' << e2->type->get_string() << endl;
+      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+         ERROR("non-Int arguments: " + string(e1->type->get_string()) + " + " + string(e2->type->get_string()))
+      }
+
+      type = idtable.add_string("Int");
 
       return errors;
    };
@@ -716,13 +753,18 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 - e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav sub: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+         ERROR("non-Int expression " + string(e1->type->get_string()) + " - " + string(e2->type->get_string()) + "")
+      }
+
+      type = idtable.add_string("Int");
 
       return errors;
    };
@@ -748,13 +790,18 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 * e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav mul: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+         ERROR("non-Int expression " + string(e1->type->get_string()) + " * " + string(e2->type->get_string()) + "")
+      }
+
+      type = idtable.add_string("Int");
 
       return errors;
    };
@@ -780,13 +827,19 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 / e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav divide: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+         // TODO: error msg
+         ERROR("non-Int expression " + string(e1->type->get_string()) + " / " + string(e2->type->get_string()) + "")
+      }
+
+      type = idtable.add_string("Int");
 
       return errors;
    };
@@ -810,12 +863,17 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // ~e1
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav neg: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+
+      if (e1->type != idtable.add_string("Bool")) {
+         ERROR("non-Bool expression: " + string(e1->type->get_string()))
+      }
+      type = idtable.add_string("Bool");
 
       return errors;
    };
@@ -841,13 +899,18 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 < e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav lt: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+
+      if (e1->type != e2->type) {
+         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " < " + string(e2->type->get_string()))
+      }
+      type = idtable.add_string("Bool");
 
       return errors;
    };
@@ -873,13 +936,18 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 = e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav eq: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+
+      if (e1->type != e2->type) {
+         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " = " + string(e2->type->get_string()))
+      }
+      type = idtable.add_string("Bool");
 
       return errors;
    };
@@ -905,13 +973,19 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // e1 <= e2
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav leq: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
-      errors += e2->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+      errors += e2->trav(filename, symtab, padding + 2);
+
+      if (e1->type != e2->type) {
+         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " <= " + string(e2->type->get_string()))
+      }
+
+      type = idtable.add_string("Bool");
 
       return errors;
    };
@@ -935,12 +1009,14 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // (e1)
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav comp: " << endl;
 
-      errors += e1->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+
+      type = e1->type;
 
       return errors;
    };
@@ -964,10 +1040,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // 123
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav int_const: " << token << endl;
+
+      type = idtable.add_string("Int");
 
       return errors;
    };
@@ -992,10 +1070,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // true
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav bool_const: " << val << endl;
+
+      type = idtable.add_string("Bool");
 
       return errors;
    };
@@ -1019,10 +1099,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // "abcd"
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav string_const: " << token << endl;
+      
+      type = idtable.add_string("String");
 
       return errors;
    };
@@ -1046,10 +1128,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // new A
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav new: " << type_name << endl;
+
+      type = idtable.add_string(type_name->get_string());
 
       return errors;
    };
@@ -1073,12 +1157,14 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // new A
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav isvoid: " << endl;
 
-      e1->trav(symtab, padding + 2);
+      errors += e1->trav(filename, symtab, padding + 2);
+
+      type = idtable.add_string("Bool");
 
       return errors;
    };
@@ -1101,10 +1187,12 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // ??
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav noexpr: " << endl;
+      
+      type = idtable.add_string("No_expr");
 
       return errors;
    };
@@ -1128,10 +1216,17 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(SymTab* symtab, int padding) final {
+   int trav(char* filename, SymTab* symtab, int padding) final {
       // ??
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav object: " << name << endl;
+      
+      if (!symtab->lookup(name->get_string())) {
+         ERROR("Undeclared identifier " + string(name->get_string()) + ".")
+      }
+      
+      // TODO: get object type
+      type = idtable.add_string("");
 
       return errors;
    };

@@ -1,6 +1,8 @@
 class C {
+	a: Int;
 	a : Int;
 	b : Bool;
+	self: Int;
 	init(x : Int, y : Bool) : C {
            {
 		a <- x;

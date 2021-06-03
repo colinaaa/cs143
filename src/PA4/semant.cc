@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <vector>
 #include "semant.h"
 #include "utilities.h"
 
@@ -256,12 +257,16 @@ void program_class::semant()
         auto node = classes->nth(it);
         symtab->addid(node->get_name(), new int(new_id()));
     }
-    cerr << "symtab... " << endl;
+    // cerr << "symtab... " << endl;
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
         auto node = classes->nth(it);
-        node->trav(symtab, 0);
+        auto errors = node->trav(node->get_filename()->get_string(), symtab, 0);
+
+        if (errors) {
+            classtable->semant_error();
+        }
     }
-    cerr << "symtab end" << endl;
+    // cerr << "symtab end" << endl;
     symtab->exitscope();
 
     if (classtable->errors()) {
