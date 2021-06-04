@@ -9,6 +9,7 @@
 //////////////////////////////////////////////////////////
 
 
+#include <map>
 #include "tree.h"
 #include "symtab.h"
 #include "cool-tree.handcode.h"
@@ -22,6 +23,9 @@ extern int i_;
 int new_id();
 
 #define ERROR(MSG) errors++; cerr << filename << ":" << get_line_number() << ": " << (MSG) << endl;
+
+extern std::map<Symbol, Symbol> depGraph;
+extern std::map<int, Symbol> typetable;
 
 // define the class for phylum
 // define simple phylum - Program
@@ -59,6 +63,7 @@ public:
     */
    virtual char* get_name() const = 0;
 
+   virtual int build_graph(int second = false) const = 0;
 #ifdef Class__EXTRAS
    Class__EXTRAS
 #endif
@@ -200,6 +205,7 @@ protected:
    Features features;
    Symbol filename;
 public:
+   int build_graph(int second = false) const final;
    class__class(Symbol a1, Symbol a2, Features a3, Symbol a4) {
       name = a1;
       parent = a2;
@@ -260,11 +266,11 @@ public:
          auto node = formals->nth(it);
          errors += node->trav(filename, symtab, padding + 2);
       }
+
       if (semant_debug) {
          cout << pad(padding) << "entering method body, dumping symtab" << endl;
          symtab->dump();
       }
-
 
       // go into method body expr
       errors += expr->trav(filename, symtab, padding + 2);
@@ -311,7 +317,9 @@ public:
       
       errors += init->trav(filename, symtab, padding + 2);
 
-      symtab->addid(name->get_string(), new int(new_id()));
+      const auto id = new int(new_id());
+      symtab->addid(name->get_string(), id);
+      typetable.emplace(*id, type_decl);
       return errors;
    };
 
@@ -344,7 +352,10 @@ public:
          ERROR("Formal parameter " + string(name->get_string()) + " is multiply defined.")
       }
 
-      symtab->addid(name->get_string(), new int(new_id()));
+      const auto id = new int(new_id());
+      symtab->addid(name->get_string(), id);
+      typetable.emplace(*id, type_decl);
+
       return errors;
    };
 
@@ -377,7 +388,9 @@ public:
 
       // new case match scope
       symtab->enterscope();
-      symtab->addid(name->get_string(), new int(new_id()));
+      const auto id = new int(new_id());
+      symtab->addid(name->get_string(), id);
+      typetable.emplace(*id, type_decl);
 
       if (semant_debug) {
          cout << pad(padding) << "entering case match, dumping symtab:" << endl;
@@ -636,7 +649,7 @@ public:
       for (auto it = body->first(); body->more(it); it = body->next(it)) {
          auto node = body->nth(it);
          errors += node->trav(filename, symtab, padding + 2);
-         type = idtable.add_string("_no_type");
+         type = node->type;
       }
 
       return errors;
@@ -680,7 +693,10 @@ public:
       }
       // enter let binding scope
       symtab->enterscope();
-      symtab->addid(identifier->get_string(), new int(new_id()));
+      const auto id = new int(new_id());
+      symtab->addid(identifier->get_string(), id);
+      typetable.emplace(*id, type_decl);
+
 
       if (semant_debug) {
          cout << pad(padding) << "entering let body, dump symtab: " << endl;
@@ -840,7 +856,6 @@ public:
       }
 
       type = idtable.add_string("Int");
-
       return errors;
    };
 
@@ -1192,7 +1207,7 @@ public:
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav noexpr: " << endl;
       
-      type = idtable.add_string("No_expr");
+      type = idtable.add_string("_no_type");
 
       return errors;
    };
@@ -1220,13 +1235,21 @@ public:
       // ??
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav object: " << name << endl;
-      
-      if (!symtab->lookup(name->get_string())) {
+
+      if (strcmp(name->get_string(), "self") == 0) {
+         type = idtable.add_string("SELF_TYPE");
+         return 0;
+      }
+
+      const auto id = symtab->lookup(name->get_string());
+
+      if (!id) {
          ERROR("Undeclared identifier " + string(name->get_string()) + ".")
+         type = idtable.add_string("Object");
+         return errors;
       }
       
-      // TODO: get object type
-      type = idtable.add_string("");
+      type = idtable.add_string(typetable[*id]->get_string());
 
       return errors;
    };

@@ -4,12 +4,16 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <vector>
+#include <map>
+#include <set>
 #include "semant.h"
 #include "utilities.h"
 
 
 extern int semant_debug;
 extern char *curr_filename;
+std::map<Symbol, Symbol> depGraph;
+std::map<int, Symbol> typetable;
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -85,9 +89,7 @@ static void initialize_constants(void)
 
 
 ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) {
-
-    /* Fill this in */
-
+    install_basic_classes();
 }
 
 void ClassTable::install_basic_classes() {
@@ -224,6 +226,27 @@ ostream& ClassTable::semant_error()
 } 
 
 
+int class__class::build_graph(int second) const {
+    if (second) {
+        auto parent = depGraph[name];
+
+        std::set<Symbol> visited{};
+        visited.insert(name);
+
+        while (strcmp(parent->get_string(), "Object") != 0) {
+            if (visited.count(parent) != 0) {
+                return -1;
+            }
+            visited.insert(parent);
+            parent = depGraph[parent];
+        }
+
+        return 0;
+    }
+    depGraph[name] = parent;
+    return 0;
+}
+
 
 /*   This is the entry point to the semantic checker.
 
@@ -252,10 +275,32 @@ void program_class::semant()
      */
     auto *symtab = new SymbolTable<char *, int>();
     symtab->enterscope();
+    bool hasMain = false;
 
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
         auto node = classes->nth(it);
+        if (symtab->probe(node->get_name())) {
+            classtable->semant_error(node) << "dup define class" << endl;
+            exit(-1);
+        }
         symtab->addid(node->get_name(), new int(new_id()));
+        node->build_graph();
+        if (strcmp("Main", node->get_name()) == 0) {
+            hasMain = true;
+        }
+    }
+
+    if (!hasMain) {
+        classtable->semant_error() << "no main class" << endl;
+    }
+
+    for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
+        auto node = classes->nth(it);
+        auto res = node->build_graph(true);
+        if (res == -1) {
+            classtable->semant_error(node) << "circle inherience" << endl;
+            exit(-1);
+        }
     }
     // cerr << "symtab... " << endl;
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
