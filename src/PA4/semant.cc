@@ -14,6 +14,7 @@ extern int semant_debug;
 extern char *curr_filename;
 std::map<Symbol, Symbol> depGraph;
 std::map<int, Symbol> typetable;
+std::set<Symbol> builtin_type;
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -149,6 +150,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 	       filename);  
     IO_class->build_graph();
     symtab->addid(IO_class->get_name(), new int(new_id()));
+    builtin_type.insert(IO);
 
     //
     // The Int class has no methods and only a single attribute, the
@@ -161,6 +163,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 	       filename);
     Int_class->build_graph();
     symtab->addid(Int_class->get_name(), new int(new_id()));
+    builtin_type.insert(Int);
 
     //
     // Bool also has only the "val" slot.
@@ -169,6 +172,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 	class_(Bool, Object, single_Features(attr(val, prim_slot, no_expr())),filename);
     Bool_class->build_graph();
     symtab->addid(Bool_class->get_name(), new int(new_id()));
+    builtin_type.insert(Bool);
 
     //
     // The class Str has a number of slots and operations:
@@ -200,6 +204,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 	       filename);
     Str_class->build_graph();
     symtab->addid(Str_class->get_name(), new int(new_id()));
+    builtin_type.insert(Str);
 
 }
 
@@ -254,6 +259,9 @@ int class__class::build_graph(int second) const {
         return 0;
     }
     depGraph[name] = parent;
+    if (depGraph.count(parent) == 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -294,14 +302,20 @@ void program_class::semant()
             classtable->semant_error(node) << "dup define class: " << node->get_name() << endl;
         }
         symtab->addid(node->get_name(), new int(new_id()));
-        node->build_graph();
+        auto res = node->build_graph();
         if (strcmp("Main", node->get_name()) == 0) {
             hasMain = true;
+        } else if (res == -1) {
+            classtable->semant_error(node) << "unknown inherience class" << endl;
         }
     }
 
     if (!hasMain) {
         classtable->semant_error() << "Class Main is not defined." << endl;
+    }
+    if (classtable->errors()) {
+        cerr << "Compilation halted due to static semantic errors." << endl;
+        exit(1);
     }
 
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
@@ -309,8 +323,12 @@ void program_class::semant()
         auto res = node->build_graph(true);
         if (res == -1) {
             classtable->semant_error(node) << "circle inherience" << endl;
-            exit(-1);
         }
+    }
+
+    if (classtable->errors()) {
+        cerr << "Compilation halted due to static semantic errors." << endl;
+        exit(1);
     }
     // cerr << "symtab... " << endl;
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
@@ -737,15 +755,7 @@ int eq_class::trav(char* filename, SymTab* symtab, int padding) {
     errors += e2->trav(filename, symtab, padding + 2);
 
     if (e1->type != e2->type) {
-        auto t1 = e1->type;
-        auto t2 = e2->type;
-
-        while (t1 != t2) {
-            t1 = depGraph[t1] && depGraph[t1] == No_class ? e2->type : depGraph[t1];
-            t2 = depGraph[t2] && depGraph[t2] == No_class ? e1->type : depGraph[t2];
-        }
-
-        if (t1 == Object && t2 == Object) {
+        if (builtin_type.count(e1->type) || builtin_type.count(e2->type)) {
             ERROR("non-eq expression: " + string(e1->type->get_string()) + " = " + string(e2->type->get_string()))
         }
     }
