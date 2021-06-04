@@ -89,10 +89,9 @@ static void initialize_constants(void)
 
 
 ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) {
-    install_basic_classes();
 }
 
-void ClassTable::install_basic_classes() {
+void ClassTable::install_basic_classes(SymTab* symtab) {
 
     // The tree package uses these globals to annotate the classes built below.
    // curr_lineno  = 0;
@@ -125,6 +124,8 @@ void ClassTable::install_basic_classes() {
 					       single_Features(method(type_name, nil_Formals(), Str, no_expr()))),
 			       single_Features(method(copy, nil_Formals(), SELF_TYPE, no_expr()))),
 	       filename);
+    Object_class->build_graph();
+    symtab->addid("Object", new int(new_id()));
 
     // 
     // The IO class inherits from Object. Its methods are
@@ -146,6 +147,8 @@ void ClassTable::install_basic_classes() {
 					       single_Features(method(in_string, nil_Formals(), Str, no_expr()))),
 			       single_Features(method(in_int, nil_Formals(), Int, no_expr()))),
 	       filename);  
+    IO_class->build_graph();
+    symtab->addid("IO", new int(new_id()));
 
     //
     // The Int class has no methods and only a single attribute, the
@@ -156,12 +159,16 @@ void ClassTable::install_basic_classes() {
 	       Object,
 	       single_Features(attr(val, prim_slot, no_expr())),
 	       filename);
+    Int_class->build_graph();
+    symtab->addid("Int", new int(new_id()));
 
     //
     // Bool also has only the "val" slot.
     //
     Class_ Bool_class =
 	class_(Bool, Object, single_Features(attr(val, prim_slot, no_expr())),filename);
+    Bool_class->build_graph();
+    symtab->addid("Bool", new int(new_id()));
 
     //
     // The class Str has a number of slots and operations:
@@ -191,6 +198,9 @@ void ClassTable::install_basic_classes() {
 						      Str, 
 						      no_expr()))),
 	       filename);
+    Str_class->build_graph();
+    symtab->addid("Str", new int(new_id()));
+
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -275,6 +285,7 @@ void program_class::semant()
      */
     auto *symtab = new SymbolTable<char *, int>();
     symtab->enterscope();
+    classtable->install_basic_classes(symtab);
     bool hasMain = false;
 
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
@@ -291,7 +302,7 @@ void program_class::semant()
     }
 
     if (!hasMain) {
-        classtable->semant_error() << "no main class" << endl;
+        classtable->semant_error() << "Class Main is not defined." << endl;
     }
 
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {

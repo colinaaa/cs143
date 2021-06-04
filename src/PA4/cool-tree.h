@@ -84,6 +84,8 @@ public:
     */
    virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
+   virtual char* get_name() const = 0;
+
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
 #endif
@@ -165,7 +167,6 @@ typedef Features_class *Features;
 typedef list_node<Formal> Formals_class;
 typedef Formals_class *Formals;
 
-
 // define list phlyum - Expressions
 typedef list_node<Expression> Expressions_class;
 typedef Expressions_class *Expressions;
@@ -220,7 +221,18 @@ public:
       symtab->enterscope();
       for (auto it = features->first(); features->more(it); it = features->next(it)) {
          auto node = features->nth(it);
+         node->trav(filename, symtab, padding + 2);
+      }
+      for (auto it = features->first(); features->more(it); it = features->next(it)) {
+         auto node = features->nth(it);
          errors += node->trav(filename, symtab, padding + 2);
+      }
+      if (
+         strcmp(parent->get_string(), "Bool") == 0 ||
+         strcmp(parent->get_string(), "String") == 0 ||
+         strcmp(parent->get_string(), "SELF_TYPE") == 0
+      ) {
+         ERROR("Class " + string(name->get_string()) + " cannot inherit class " + string(parent->get_string()) + ".")
       }
       symtab->exitscope();
       return errors;
@@ -246,12 +258,14 @@ protected:
    Formals formals;
    Symbol return_type;
    Expression expr;
+   bool visited;
 public:
    method_class(Symbol a1, Formals a2, Symbol a3, Expression a4) {
       name = a1;
       formals = a2;
       return_type = a3;
       expr = a4;
+      visited = false;
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
@@ -259,6 +273,13 @@ public:
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav method: " << name << endl;
 
+      if (!visited) {
+         visited = true;
+         const auto id = new int(new_id());
+         symtab->addid(name->get_string(), id);
+         typetable.emplace(*id, return_type);
+         return 0;
+      }
       // new method scope
       symtab->enterscope();
 
@@ -280,6 +301,10 @@ public:
       return errors;
    };
 
+   char* get_name() const final {
+      return name->get_string();
+   }
+
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
 #endif
@@ -295,11 +320,13 @@ protected:
    Symbol name;
    Symbol type_decl;
    Expression init;
+   bool visited;
 public:
    attr_class(Symbol a1, Symbol a2, Expression a3) {
       name = a1;
       type_decl = a2;
       init = a3;
+      visited = false;
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
@@ -307,21 +334,29 @@ public:
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav attr: " << name << endl;
 
+      if (!visited) {
+         if (symtab->probe(name->get_string()) != NULL) {
+            ERROR("duplicated id: " + string(name->get_string()))
+         }
+         const auto id = new int(new_id());
+         symtab->addid(name->get_string(), id);
+         typetable.emplace(*id, type_decl);
+         visited = true;
+         return 0;
+      }
+
       if (strcmp(name->get_string(), "self") == 0) {
          ERROR("'self' cannot be the name of an attribute.")
       }
 
-      if (symtab->probe(name->get_string()) != NULL) {
-         ERROR("duplicated id: " + string(name->get_string()))
-      }
-      
       errors += init->trav(filename, symtab, padding + 2);
 
-      const auto id = new int(new_id());
-      symtab->addid(name->get_string(), id);
-      typetable.emplace(*id, type_decl);
       return errors;
    };
+
+   char* get_name() const final {
+      return name->get_string();
+   }
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -501,7 +536,9 @@ public:
       // short hand for self.<id>(...)
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav dispatch: " << name << endl;
-      
+
+      // self
+      errors += expr->trav(filename, symtab, padding + 2);
 
       for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
          auto node = actual->nth(it);
@@ -695,11 +732,24 @@ public:
       int errors = 0;
       if (semant_debug) cout << pad(padding) << "trav let: " << identifier << ':' << type_decl << endl;
 
+      if (strcmp(identifier->get_string(), "self") == 0) {
+         ERROR("'self' cannot be bound in a 'let' expression.")
+         return errors;
+      }
+
       errors += init->trav(filename, symtab, padding + 2);
-      if (init->type != idtable.add_string(type_decl->get_string())) {
-         // TODO: deal with inherience
-         // error msg
-         ERROR("")
+      bool match = false;
+      auto t = init->type;
+      while (strcmp(t->get_string(), "Object") != 0) {
+         if (string(type_decl->get_string()) == string(t->get_string())) {
+            match = true;
+            break;
+         }
+         t = depGraph[t];
+      }
+
+      if (!match) {
+         ERROR("init type not match, expect " + string(type_decl->get_string()) + " got: " + string(init->type->get_string()))
       }
       // enter let binding scope
       symtab->enterscope();
@@ -895,10 +945,10 @@ public:
 
       errors += e1->trav(filename, symtab, padding + 2);
 
-      if (e1->type != idtable.add_string("Bool")) {
+      if (e1->type != idtable.add_string("Int")) {
          ERROR("non-Bool expression: " + string(e1->type->get_string()))
       }
-      type = idtable.add_string("Bool");
+      type = idtable.add_string("Int");
 
       return errors;
    };
