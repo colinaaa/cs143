@@ -125,7 +125,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 			       single_Features(method(copy, nil_Formals(), SELF_TYPE, no_expr()))),
 	       filename);
     Object_class->build_graph();
-    symtab->addid("Object", new int(new_id()));
+    symtab->addid(Object_class->get_name(), new int(new_id()));
 
     // 
     // The IO class inherits from Object. Its methods are
@@ -148,7 +148,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 			       single_Features(method(in_int, nil_Formals(), Int, no_expr()))),
 	       filename);  
     IO_class->build_graph();
-    symtab->addid("IO", new int(new_id()));
+    symtab->addid(IO_class->get_name(), new int(new_id()));
 
     //
     // The Int class has no methods and only a single attribute, the
@@ -160,7 +160,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 	       single_Features(attr(val, prim_slot, no_expr())),
 	       filename);
     Int_class->build_graph();
-    symtab->addid("Int", new int(new_id()));
+    symtab->addid(Int_class->get_name(), new int(new_id()));
 
     //
     // Bool also has only the "val" slot.
@@ -168,7 +168,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
     Class_ Bool_class =
 	class_(Bool, Object, single_Features(attr(val, prim_slot, no_expr())),filename);
     Bool_class->build_graph();
-    symtab->addid("Bool", new int(new_id()));
+    symtab->addid(Bool_class->get_name(), new int(new_id()));
 
     //
     // The class Str has a number of slots and operations:
@@ -199,7 +199,7 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 						      no_expr()))),
 	       filename);
     Str_class->build_graph();
-    symtab->addid("Str", new int(new_id()));
+    symtab->addid(Str_class->get_name(), new int(new_id()));
 
 }
 
@@ -283,16 +283,15 @@ void program_class::semant()
     /**
      * @brief first trav to build symbol table
      */
-    auto *symtab = new SymbolTable<char *, int>();
+    auto *symtab = new SymbolTable<string, int>();
     symtab->enterscope();
     classtable->install_basic_classes(symtab);
     bool hasMain = false;
 
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
         auto node = classes->nth(it);
-        if (symtab->probe(node->get_name())) {
-            classtable->semant_error(node) << "dup define class" << endl;
-            exit(-1);
+        if (symtab->probe(node->get_name()) != NULL) {
+            classtable->semant_error(node) << "dup define class: " << node->get_name() << endl;
         }
         symtab->addid(node->get_name(), new int(new_id()));
         node->build_graph();
@@ -337,7 +336,7 @@ int class__class::trav(char* filename, SymTab* symtab, int padding) {
     symtab->enterscope();
     for (auto it = features->first(); features->more(it); it = features->next(it)) {
         auto node = features->nth(it);
-        node->trav(filename, symtab, padding + 2);
+        errors += node->trav(filename, symtab, padding + 2);
     }
     for (auto it = features->first(); features->more(it); it = features->next(it)) {
         auto node = features->nth(it);
@@ -365,9 +364,10 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
     if (!visited) {
         visited = true;
         const auto id = new int(new_id());
+
         symtab->addid(name->get_string(), id);
         typetable.emplace(*id, return_type);
-        return 0;
+        return errors;
     }
     // new method scope
     symtab->enterscope();
@@ -375,6 +375,10 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
     for (auto it = formals->first(); formals->more(it); it = formals->next(it)) {
         auto node = formals->nth(it);
         errors += node->trav(filename, symtab, padding + 2);
+    }
+
+    if (symtab->lookup(return_type->get_string()) == NULL) {
+        ERROR("Undefined return type " + string(return_type->get_string()))
     }
 
     if (semant_debug) {
@@ -461,6 +465,16 @@ int assign_class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
     errors += expr->trav(filename, symtab, padding + 2);
+
+    const auto id = symtab->lookup(name->get_string());
+    if (!id) {
+        ERROR("Unknonw identifier " + string(name->get_string()))
+        return errors;
+    }
+
+    if (strcmp(expr->type->get_string(), typetable[*id]->get_string()) != 0) {
+        ERROR("assign type unmatch")
+    }
     
     type = expr->type;
 
@@ -516,7 +530,7 @@ int cond_class::trav(char* filename, SymTab* symtab, int padding) {
     errors += then_exp->trav(filename, symtab, padding + 2);
     errors += else_exp->trav(filename, symtab, padding + 2);
 
-    type = idtable.add_string("_no_type");
+    type = Object;
 
     return errors;
 }
@@ -532,7 +546,7 @@ int loop_class::trav(char* filename, SymTab* symtab, int padding) {
     }
     errors += body->trav(filename, symtab, padding + 2);
 
-    type = idtable.add_string("_no_type");
+    type = Object;
 
     return errors;
 }
@@ -543,10 +557,15 @@ int typcase_class::trav(char* filename, SymTab* symtab, int padding) {
     if (semant_debug) cout << pad(padding) << "trav typecase: " << endl;
 
     errors += expr->trav(filename, symtab, padding + 2);
+    std::set<Symbol> branch_type;
 
     for (auto it = cases->first(); cases->more(it); it = cases->next(it)) {
         auto node = cases->nth(it);
         node->trav(filename, symtab, padding + 2);
+        if (branch_type.count(node->get_type()) != 0) {
+            ERROR("Duplicate branch " + string(node->get_type()->get_string()) + " in case statement.")
+        }
+        branch_type.insert(node->get_type());
     }
     
     type = expr->type;
@@ -579,25 +598,27 @@ int let_class::trav(char* filename, SymTab* symtab, int padding) {
     }
 
     errors += init->trav(filename, symtab, padding + 2);
-    bool match = false;
-    auto t = init->type;
-    while (strcmp(t->get_string(), "Object") != 0) {
-        if (string(type_decl->get_string()) == string(t->get_string())) {
-        match = true;
-        break;
+    if (!(init->type == No_type)) {
+        bool match = false;
+        auto t = init->type;
+        while (strcmp(t->get_string(), "Object") != 0) {
+            if (string(type_decl->get_string()) == string(t->get_string())) {
+            match = true;
+            break;
+            }
+            t = depGraph[t];
         }
-        t = depGraph[t];
-    }
 
-    if (!match) {
-        ERROR("init type not match, expect " + string(type_decl->get_string()) + " got: " + string(init->type->get_string()))
+        if (!match) {
+            ERROR("init type not match, expect " + string(type_decl->get_string()) + " got: " + string(init->type->get_string()))
+        }
     }
+    
     // enter let binding scope
     symtab->enterscope();
     const auto id = new int(new_id());
     symtab->addid(identifier->get_string(), id);
     typetable.emplace(*id, type_decl);
-
 
     if (semant_debug) {
         cout << pad(padding) << "entering let body, dump symtab: " << endl;
@@ -619,11 +640,11 @@ int plus_class::trav(char* filename, SymTab* symtab, int padding) {
     errors += e1->trav(filename, symtab, padding + 2);
     errors += e2->trav(filename, symtab, padding + 2);
     // cout << e1->type->get_string() << ' ' << e2->type->get_string() << endl;
-    if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+    if (e1->type != Int || e2->type != Int) {
         ERROR("non-Int arguments: " + string(e1->type->get_string()) + " + " + string(e2->type->get_string()))
     }
 
-    type = idtable.add_string("Int");
+    type = Int;
 
     return errors;
 }
@@ -635,11 +656,11 @@ int sub_class::trav(char* filename, SymTab* symtab, int padding) {
 
     errors += e1->trav(filename, symtab, padding + 2);
     errors += e2->trav(filename, symtab, padding + 2);
-    if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+    if (e1->type != Int || e2->type != Int) {
         ERROR("non-Int expression " + string(e1->type->get_string()) + " - " + string(e2->type->get_string()) + "")
     }
 
-    type = idtable.add_string("Int");
+    type = Int;
 
     return errors;
 }
@@ -651,11 +672,11 @@ int mul_class::trav(char* filename, SymTab* symtab, int padding) {
 
     errors += e1->trav(filename, symtab, padding + 2);
     errors += e2->trav(filename, symtab, padding + 2);
-    if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+    if (e1->type != Int || e2->type != Int) {
         ERROR("non-Int expression " + string(e1->type->get_string()) + " * " + string(e2->type->get_string()) + "")
     }
 
-    type = idtable.add_string("Int");
+    type = Int;
 
     return errors;
 }
@@ -667,12 +688,12 @@ int divide_class::trav(char* filename, SymTab* symtab, int padding) {
 
     errors += e1->trav(filename, symtab, padding + 2);
     errors += e2->trav(filename, symtab, padding + 2);
-    if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
+    if (e1->type != Int || e2->type != Int) {
         // TODO: error msg
         ERROR("non-Int expression " + string(e1->type->get_string()) + " / " + string(e2->type->get_string()) + "")
     }
 
-    type = idtable.add_string("Int");
+    type = Int;
     return errors;
 }
 
@@ -683,10 +704,10 @@ int neg_class::trav(char* filename, SymTab* symtab, int padding) {
 
     errors += e1->trav(filename, symtab, padding + 2);
 
-    if (e1->type != idtable.add_string("Int")) {
+    if (e1->type != Int) {
         ERROR("non-Bool expression: " + string(e1->type->get_string()))
     }
-    type = idtable.add_string("Int");
+    type = Int;
 
     return errors;
 }
@@ -702,7 +723,7 @@ int lt_class::trav(char* filename, SymTab* symtab, int padding) {
     if (e1->type != e2->type) {
         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " < " + string(e2->type->get_string()))
     }
-    type = idtable.add_string("Bool");
+    type = Bool;
 
     return errors;
 }
@@ -716,9 +737,19 @@ int eq_class::trav(char* filename, SymTab* symtab, int padding) {
     errors += e2->trav(filename, symtab, padding + 2);
 
     if (e1->type != e2->type) {
-        ERROR("non-Bool expression: " + string(e1->type->get_string()) + " = " + string(e2->type->get_string()))
+        auto t1 = e1->type;
+        auto t2 = e2->type;
+
+        while (t1 != t2) {
+            t1 = depGraph[t1] && depGraph[t1] == No_class ? e2->type : depGraph[t1];
+            t2 = depGraph[t2] && depGraph[t2] == No_class ? e1->type : depGraph[t2];
+        }
+
+        if (t1 == Object && t2 == Object) {
+            ERROR("non-eq expression: " + string(e1->type->get_string()) + " = " + string(e2->type->get_string()))
+        }
     }
-    type = idtable.add_string("Bool");
+    type = Bool;
 
     return errors;
 }
@@ -735,7 +766,7 @@ int leq_class::trav(char* filename, SymTab* symtab, int padding) {
         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " <= " + string(e2->type->get_string()))
     }
 
-    type = idtable.add_string("Bool");
+    type = Bool;
 
     return errors;
 }
@@ -757,7 +788,7 @@ int int_const_class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav int_const: " << token << endl;
 
-    type = idtable.add_string("Int");
+    type = Int;
 
     return errors;
 }
@@ -767,7 +798,7 @@ int bool_const_class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav bool_const: " << val << endl;
 
-    type = idtable.add_string("Bool");
+    type = Bool;
 
     return errors;
 }
@@ -777,16 +808,19 @@ int string_const_class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav string_const: " << token << endl;
     
-    type = idtable.add_string("String");
+    type = Str;
 
     return errors;
 }
 
-    int new__class::trav(char* filename, SymTab* symtab, int padding) {
+int new__class::trav(char* filename, SymTab* symtab, int padding) {
     // new A
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav new: " << type_name << endl;
 
+    if (symtab->lookup(type_name->get_string()) == NULL) {
+        ERROR("'new' used with undefined class " + string(type_name->get_string()))
+    }
     type = idtable.add_string(type_name->get_string());
 
     return errors;
@@ -799,7 +833,7 @@ int isvoid_class::trav(char* filename, SymTab* symtab, int padding) {
 
     errors += e1->trav(filename, symtab, padding + 2);
 
-    type = idtable.add_string("Bool");
+    type = Bool;
 
     return errors;
 }
@@ -809,7 +843,7 @@ int no_expr_class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav noexpr: " << endl;
     
-    type = idtable.add_string("_no_type");
+    type = No_type;
 
     return errors;
 }
@@ -820,7 +854,7 @@ int object_class::trav(char* filename, SymTab* symtab, int padding) {
     if (semant_debug) cout << pad(padding) << "trav object: " << name << endl;
 
     if (strcmp(name->get_string(), "self") == 0) {
-        type = idtable.add_string("SELF_TYPE");
+        type = SELF_TYPE;
         return 0;
     }
 
@@ -828,7 +862,7 @@ int object_class::trav(char* filename, SymTab* symtab, int padding) {
 
     if (!id) {
         ERROR("Undeclared identifier " + string(name->get_string()) + ".")
-        type = idtable.add_string("Object");
+        type = Object;
         return errors;
     }
     

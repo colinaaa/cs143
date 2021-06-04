@@ -14,8 +14,8 @@
 #include "symtab.h"
 #include "cool-tree.handcode.h"
 
-using SymTab = SymbolTable<char *, int>;
 using std::string, std::to_string;
+using SymTab = SymbolTable<string, int>;
 
 extern int semant_debug;
 
@@ -145,6 +145,8 @@ public:
     * @return int the error number
     */
    virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
+
+   virtual Symbol get_type() const = 0;
 
 #ifdef Case_EXTRAS
    Case_EXTRAS
@@ -324,6 +326,7 @@ public:
    Case copy_Case();
    void dump(ostream& stream, int n);
    int trav(char* filename, SymTab* symtab, int padding = 0) final;
+   Symbol get_type() const final { return type_decl; };
 
 #ifdef Case_SHARED_EXTRAS
    Case_SHARED_EXTRAS
