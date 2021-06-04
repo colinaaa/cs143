@@ -508,7 +508,14 @@ public:
          errors += node->trav(filename, symtab, padding + 2);
       }
 
-      // TODO: disptch type
+      const auto id = symtab->lookup(name->get_string());
+
+      if (id == NULL) {
+         ERROR(string(name->get_string()) + "() not found")
+         return errors;
+      }
+
+      type = idtable.add_string(typetable[*id]->get_string());
       return errors;
    };
 
@@ -577,6 +584,9 @@ public:
       if (semant_debug) cout << pad(padding) << "trav loop: " << endl;
 
       errors += pred->trav(filename, symtab, padding + 2);
+      if (strcmp(pred->type->get_string(), "Bool") != 0) {
+         ERROR("loop condition not bool, but: " + string(pred->type->get_string()))
+      }
       errors += body->trav(filename, symtab, padding + 2);
 
       type = idtable.add_string("_no_type");
