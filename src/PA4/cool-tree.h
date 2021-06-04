@@ -215,32 +215,8 @@ public:
    }
    Class_ copy_Class_();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav class: " << name << endl;
-      symtab->enterscope();
-      for (auto it = features->first(); features->more(it); it = features->next(it)) {
-         auto node = features->nth(it);
-         node->trav(filename, symtab, padding + 2);
-      }
-      for (auto it = features->first(); features->more(it); it = features->next(it)) {
-         auto node = features->nth(it);
-         errors += node->trav(filename, symtab, padding + 2);
-      }
-      if (
-         strcmp(parent->get_string(), "Bool") == 0 ||
-         strcmp(parent->get_string(), "String") == 0 ||
-         strcmp(parent->get_string(), "SELF_TYPE") == 0
-      ) {
-         ERROR("Class " + string(name->get_string()) + " cannot inherit class " + string(parent->get_string()) + ".")
-      }
-      symtab->exitscope();
-      return errors;
-   };
-
-   char* get_name() const final {
-      return (name->get_string());
-   }
+   int trav(char* filename, SymTab* symtab, int padding) final;
+   char* get_name() const;
 
 #ifdef Class__SHARED_EXTRAS
    Class__SHARED_EXTRAS
@@ -269,41 +245,8 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding = 0) final {
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav method: " << name << endl;
-
-      if (!visited) {
-         visited = true;
-         const auto id = new int(new_id());
-         symtab->addid(name->get_string(), id);
-         typetable.emplace(*id, return_type);
-         return 0;
-      }
-      // new method scope
-      symtab->enterscope();
-
-      for (auto it = formals->first(); formals->more(it); it = formals->next(it)) {
-         auto node = formals->nth(it);
-         errors += node->trav(filename, symtab, padding + 2);
-      }
-
-      if (semant_debug) {
-         cout << pad(padding) << "entering method body, dumping symtab" << endl;
-         symtab->dump();
-      }
-
-      // go into method body expr
-      errors += expr->trav(filename, symtab, padding + 2);
-
-      // exit this method scope
-      symtab->exitscope();
-      return errors;
-   };
-
-   char* get_name() const final {
-      return name->get_string();
-   }
+   int trav(char* filename, SymTab* symtab, int padding = 0) final;
+   char* get_name() const final;
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -330,33 +273,9 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding = 0) final {
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav attr: " << name << endl;
+   int trav(char* filename, SymTab* symtab, int padding = 0) final;
 
-      if (!visited) {
-         if (symtab->probe(name->get_string()) != NULL) {
-            ERROR("duplicated id: " + string(name->get_string()))
-         }
-         const auto id = new int(new_id());
-         symtab->addid(name->get_string(), id);
-         typetable.emplace(*id, type_decl);
-         visited = true;
-         return 0;
-      }
-
-      if (strcmp(name->get_string(), "self") == 0) {
-         ERROR("'self' cannot be the name of an attribute.")
-      }
-
-      errors += init->trav(filename, symtab, padding + 2);
-
-      return errors;
-   };
-
-   char* get_name() const final {
-      return name->get_string();
-   }
+   char* get_name() const final;
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -379,20 +298,7 @@ public:
    }
    Formal copy_Formal();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding = 0) final {
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav formal: " << name << endl;
-
-      if (symtab->probe(name->get_string())) {
-         ERROR("Formal parameter " + string(name->get_string()) + " is multiply defined.")
-      }
-
-      const auto id = new int(new_id());
-      symtab->addid(name->get_string(), id);
-      typetable.emplace(*id, type_decl);
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding = 0) final;
 
 #ifdef Formal_SHARED_EXTRAS
    Formal_SHARED_EXTRAS
@@ -417,25 +323,7 @@ public:
    }
    Case copy_Case();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding = 0) final {
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav branch: " << name << ":" << type_decl << endl;
-
-      // new case match scope
-      symtab->enterscope();
-      const auto id = new int(new_id());
-      symtab->addid(name->get_string(), id);
-      typetable.emplace(*id, type_decl);
-
-      if (semant_debug) {
-         cout << pad(padding) << "entering case match, dumping symtab:" << endl;
-         symtab->dump();
-      }
-
-      expr->trav(filename, symtab, padding + 2);
-      symtab->exitscope();
-      return errors;
-   }
+   int trav(char* filename, SymTab* symtab, int padding = 0) final;
 
 #ifdef Case_SHARED_EXTRAS
    Case_SHARED_EXTRAS
@@ -458,15 +346,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
-      errors += expr->trav(filename, symtab, padding + 2);
-      
-      type = expr->type;
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -493,20 +373,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // <expr>@<type>.id(<expr>, ... <expr>)
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav static dispatch: " << name << endl;
-
-      errors += expr->trav(filename, symtab, padding + 2);
-
-      for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
-         auto node = actual->nth(it);
-         errors += node->trav(filename, symtab, padding + 2);
-      }
-      // TODO: disptch type
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -531,31 +398,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // id(<expr>, ... <expr>)
-      // short hand for self.<id>(...)
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav dispatch: " << name << endl;
-
-      // self
-      errors += expr->trav(filename, symtab, padding + 2);
-
-      for (auto it = actual->first(); actual->more(it); it = actual->next(it)) {
-         auto node = actual->nth(it);
-         errors += node->trav(filename, symtab, padding + 2);
-      }
-
-      const auto id = symtab->lookup(name->get_string());
-
-      if (id == NULL) {
-         ERROR(string(name->get_string()) + "() not found")
-         return errors;
-      }
-
-      type = idtable.add_string(typetable[*id]->get_string());
-      return errors;
-   };
-
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -580,19 +423,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // if <expr> then <expr> else <expr> fi
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav cond: " << endl;
-
-      errors += pred->trav(filename, symtab, padding + 2);
-      errors += then_exp->trav(filename, symtab, padding + 2);
-      errors += else_exp->trav(filename, symtab, padding + 2);
-
-      type = idtable.add_string("_no_type");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -615,21 +446,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // while <expr> loop <expr> pool
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav loop: " << endl;
-
-      errors += pred->trav(filename, symtab, padding + 2);
-      if (strcmp(pred->type->get_string(), "Bool") != 0) {
-         ERROR("loop condition not bool, but: " + string(pred->type->get_string()))
-      }
-      errors += body->trav(filename, symtab, padding + 2);
-
-      type = idtable.add_string("_no_type");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -652,22 +469,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // case expr of [[ID : TYPE => expr; ]] + esac
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav typecase: " << endl;
-
-      errors += expr->trav(filename, symtab, padding + 2);
-
-      for (auto it = cases->first(); cases->more(it); it = cases->next(it)) {
-         auto node = cases->nth(it);
-         node->trav(filename, symtab, padding + 2);
-      }
-      
-      type = expr->type;
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -688,19 +490,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // { <expr>; ... <expr>; }
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav block: " << endl;
-
-      for (auto it = body->first(); body->more(it); it = body->next(it)) {
-         auto node = body->nth(it);
-         errors += node->trav(filename, symtab, padding + 2);
-         type = node->type;
-      }
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -727,48 +517,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // let <id1> : <type1> [ <- <expr1> ], ..., <idn> : <typen> [ <- <exprn> ] in <expr>
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav let: " << identifier << ':' << type_decl << endl;
-
-      if (strcmp(identifier->get_string(), "self") == 0) {
-         ERROR("'self' cannot be bound in a 'let' expression.")
-         return errors;
-      }
-
-      errors += init->trav(filename, symtab, padding + 2);
-      bool match = false;
-      auto t = init->type;
-      while (strcmp(t->get_string(), "Object") != 0) {
-         if (string(type_decl->get_string()) == string(t->get_string())) {
-            match = true;
-            break;
-         }
-         t = depGraph[t];
-      }
-
-      if (!match) {
-         ERROR("init type not match, expect " + string(type_decl->get_string()) + " got: " + string(init->type->get_string()))
-      }
-      // enter let binding scope
-      symtab->enterscope();
-      const auto id = new int(new_id());
-      symtab->addid(identifier->get_string(), id);
-      typetable.emplace(*id, type_decl);
-
-
-      if (semant_debug) {
-         cout << pad(padding) << "entering let body, dump symtab: " << endl;
-         symtab->dump();
-      }
-      errors += body->trav(filename, symtab, padding + 2);
-      symtab->exitscope();
-
-      type = body->type;
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -791,22 +540,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 + e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav plus: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-      // cout << e1->type->get_string() << ' ' << e2->type->get_string() << endl;
-      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
-         ERROR("non-Int arguments: " + string(e1->type->get_string()) + " + " + string(e2->type->get_string()))
-      }
-
-      type = idtable.add_string("Int");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -829,21 +563,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 - e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav sub: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
-         ERROR("non-Int expression " + string(e1->type->get_string()) + " - " + string(e2->type->get_string()) + "")
-      }
-
-      type = idtable.add_string("Int");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -866,21 +586,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 * e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav mul: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
-         ERROR("non-Int expression " + string(e1->type->get_string()) + " * " + string(e2->type->get_string()) + "")
-      }
-
-      type = idtable.add_string("Int");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -903,21 +609,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 / e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav divide: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-      if (e1->type != idtable.add_string("Int") || e2->type != idtable.add_string("Int")) {
-         // TODO: error msg
-         ERROR("non-Int expression " + string(e1->type->get_string()) + " / " + string(e2->type->get_string()) + "")
-      }
-
-      type = idtable.add_string("Int");
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -938,20 +630,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // ~e1
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav neg: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-
-      if (e1->type != idtable.add_string("Int")) {
-         ERROR("non-Bool expression: " + string(e1->type->get_string()))
-      }
-      type = idtable.add_string("Int");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -974,21 +653,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 < e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav lt: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-
-      if (e1->type != e2->type) {
-         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " < " + string(e2->type->get_string()))
-      }
-      type = idtable.add_string("Bool");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1011,21 +676,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 = e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav eq: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-
-      if (e1->type != e2->type) {
-         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " = " + string(e2->type->get_string()))
-      }
-      type = idtable.add_string("Bool");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1048,22 +699,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // e1 <= e2
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav leq: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-      errors += e2->trav(filename, symtab, padding + 2);
-
-      if (e1->type != e2->type) {
-         ERROR("non-Bool expression: " + string(e1->type->get_string()) + " <= " + string(e2->type->get_string()))
-      }
-
-      type = idtable.add_string("Bool");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1084,17 +720,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // (e1)
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav comp: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-
-      type = e1->type;
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1115,15 +741,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // 123
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav int_const: " << token << endl;
-
-      type = idtable.add_string("Int");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 
 #ifdef Expression_SHARED_EXTRAS
@@ -1145,15 +763,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // true
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav bool_const: " << val << endl;
-
-      type = idtable.add_string("Bool");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1174,15 +784,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // "abcd"
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav string_const: " << token << endl;
-      
-      type = idtable.add_string("String");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1203,15 +805,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // new A
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav new: " << type_name << endl;
-
-      type = idtable.add_string(type_name->get_string());
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1232,17 +826,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // new A
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav isvoid: " << endl;
-
-      errors += e1->trav(filename, symtab, padding + 2);
-
-      type = idtable.add_string("Bool");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 
 #ifdef Expression_SHARED_EXTRAS
@@ -1262,15 +846,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // ??
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav noexpr: " << endl;
-      
-      type = idtable.add_string("_no_type");
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -1291,28 +867,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   int trav(char* filename, SymTab* symtab, int padding) final {
-      // ??
-      int errors = 0;
-      if (semant_debug) cout << pad(padding) << "trav object: " << name << endl;
-
-      if (strcmp(name->get_string(), "self") == 0) {
-         type = idtable.add_string("SELF_TYPE");
-         return 0;
-      }
-
-      const auto id = symtab->lookup(name->get_string());
-
-      if (!id) {
-         ERROR("Undeclared identifier " + string(name->get_string()) + ".")
-         type = idtable.add_string("Object");
-         return errors;
-      }
-      
-      type = idtable.add_string(typetable[*id]->get_string());
-
-      return errors;
-   };
+   int trav(char* filename, SymTab* symtab, int padding) final;
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
