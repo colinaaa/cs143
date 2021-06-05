@@ -15,6 +15,7 @@ extern char *curr_filename;
 std::map<Symbol, Symbol> depGraph;
 std::map<int, Symbol> typetable;
 std::set<Symbol> builtin_type;
+Symbol current_class;
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -205,6 +206,12 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
     Str_class->build_graph();
     symtab->addid(Str_class->get_name(), new int(new_id()));
     builtin_type.insert(Str);
+    symtab->addid("SELF_TYPE", new int(new_id()));
+    Object_class->trav(filename->get_string(), symtab, 0);
+    IO_class->trav(filename->get_string(), symtab, 0);
+    Int_class->trav(filename->get_string(), symtab, 0);
+    Bool_class->trav(filename->get_string(), symtab, 0);
+    Str_class->trav(filename->get_string(), symtab, 0);
 
 }
 
@@ -259,10 +266,32 @@ int class__class::build_graph(int second) const {
         return 0;
     }
     depGraph[name] = parent;
-    if (depGraph.count(parent) == 0) {
+    if (parent == SELF_TYPE || depGraph.count(parent) == 0) {
         return -1;
     }
     return 0;
+}
+
+
+string method_name(const Symbol class_name, const Symbol name) {
+    return string(class_name->get_string()) + "@" + string(name->get_string());
+}
+
+int* lookup_identifier(SymTab* symtab, Symbol name) {
+    int* id = symtab->lookup(name->get_string());
+    auto t = current_class;
+    if (semant_debug) {
+        cout << "id: " << current_class->get_string() << "@" << name->get_string() << " " << endl;
+    }
+
+    while (t != No_class && !id) {
+        if (semant_debug) {
+            cout << "id: " << current_class->get_string() << "@" << name->get_string() << endl;
+        }
+        id = symtab->lookup(method_name(t, name));
+        t = depGraph[t];
+    }
+    return id;
 }
 
 
@@ -294,6 +323,9 @@ void program_class::semant()
     auto *symtab = new SymbolTable<string, int>();
     symtab->enterscope();
     classtable->install_basic_classes(symtab);
+    if (semant_debug) {
+        cout << "finish install basic classes, start analysis classes" << endl;
+    }
     bool hasMain = false;
 
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
@@ -305,7 +337,8 @@ void program_class::semant()
         auto res = node->build_graph();
         if (strcmp("Main", node->get_name()) == 0) {
             hasMain = true;
-        } else if (res == -1) {
+        }
+        if (res == -1) {
             classtable->semant_error(node) << "unknown inherience class" << endl;
         }
     }
@@ -348,22 +381,25 @@ void program_class::semant()
     }
 }
 
+
+
 int class__class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav class: " << name << endl;
+    current_class = name;
+    for (auto it = features->first(); features->more(it); it = features->next(it)) {
+        auto node = features->nth(it);
+        errors += node->trav(filename, symtab, padding + 2);
+    }
     symtab->enterscope();
     for (auto it = features->first(); features->more(it); it = features->next(it)) {
         auto node = features->nth(it);
         errors += node->trav(filename, symtab, padding + 2);
     }
-    for (auto it = features->first(); features->more(it); it = features->next(it)) {
-        auto node = features->nth(it);
-        errors += node->trav(filename, symtab, padding + 2);
-    }
     if (
-        strcmp(parent->get_string(), "Bool") == 0 ||
-        strcmp(parent->get_string(), "String") == 0 ||
-        strcmp(parent->get_string(), "SELF_TYPE") == 0
+        parent == Bool ||
+        parent == Str ||
+        parent == SELF_TYPE
     ) {
         ERROR("Class " + string(name->get_string()) + " cannot inherit class " + string(parent->get_string()) + ".")
     }
@@ -383,7 +419,7 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
         visited = true;
         const auto id = new int(new_id());
 
-        symtab->addid(name->get_string(), id);
+        symtab->addid(method_name(current_class, name), id);
         typetable.emplace(*id, return_type);
         return errors;
     }
@@ -422,10 +458,10 @@ int attr_class::trav(char* filename, SymTab* symtab, int padding) {
 
     if (!visited) {
         if (symtab->probe(name->get_string()) != NULL) {
-        ERROR("duplicated id: " + string(name->get_string()))
+        ERROR("duplicated attr id: " + string(name->get_string()))
         }
         const auto id = new int(new_id());
-        symtab->addid(name->get_string(), id);
+        symtab->addid(method_name(current_class, name), id);
         typetable.emplace(*id, type_decl);
         visited = true;
         return 0;
@@ -484,9 +520,9 @@ int assign_class::trav(char* filename, SymTab* symtab, int padding) {
     if (semant_debug) cout << pad(padding) << "trav expr assign: " << name << endl;
     errors += expr->trav(filename, symtab, padding + 2);
 
-    const auto id = symtab->lookup(name->get_string());
+    const auto id = lookup_identifier(symtab, name);
     if (!id) {
-        ERROR("Unknonw identifier " + string(name->get_string()))
+        ERROR("Unknown assign identifier " + string(name->get_string()))
         return errors;
     }
 
@@ -510,7 +546,22 @@ int static_dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
         auto node = actual->nth(it);
         errors += node->trav(filename, symtab, padding + 2);
     }
-    // TODO: disptch type
+
+    const auto id = symtab->lookup(method_name(type_name, name));
+    if (semant_debug) {
+        cout << pad(padding) << expr->type->get_string() << "@" << type_name->get_string()
+        << "." << name->get_string() << endl;
+    }
+    if (id == NULL) {
+        ERROR("static dispatch not found")
+        return errors;
+    }
+
+    type = typetable[*id];
+
+    if (type == SELF_TYPE) {
+        type = expr->type;
+    }
     return errors;
 }
 
@@ -528,7 +579,22 @@ int dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
         errors += node->trav(filename, symtab, padding + 2);
     }
 
-    const auto id = symtab->lookup(name->get_string());
+    auto t = expr->type;
+    int* id;
+
+    while (t != No_class) {
+        if (t == SELF_TYPE) {
+            t = current_class;
+        }
+        id = symtab->lookup(method_name(t, name));
+        if (semant_debug) {
+            cout << pad(padding) << t->get_string() << "." << name->get_string() << endl;
+        }
+        if (id != NULL) {
+            break;
+        }
+        t = depGraph[t];
+    }
 
     if (id == NULL) {
         ERROR(string(name->get_string()) + "() not found")
@@ -536,6 +602,17 @@ int dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
     }
 
     type = idtable.add_string(typetable[*id]->get_string());
+
+    if (semant_debug) {
+        cout << "dispatch type: " << type->get_string() << endl;
+    }
+
+    if (type == SELF_TYPE) {
+        if (semant_debug) {
+            cout << "SELF_TYPE to" << expr->type->get_string() << endl;
+        }
+        type = expr->type;
+    }
     return errors;
 }
 
@@ -559,7 +636,7 @@ int loop_class::trav(char* filename, SymTab* symtab, int padding) {
     if (semant_debug) cout << pad(padding) << "trav loop: " << endl;
 
     errors += pred->trav(filename, symtab, padding + 2);
-    if (strcmp(pred->type->get_string(), "Bool") != 0) {
+    if (pred->type != Bool) {
         ERROR("loop condition not bool, but: " + string(pred->type->get_string()))
     }
     errors += body->trav(filename, symtab, padding + 2);
@@ -707,7 +784,6 @@ int divide_class::trav(char* filename, SymTab* symtab, int padding) {
     errors += e1->trav(filename, symtab, padding + 2);
     errors += e2->trav(filename, symtab, padding + 2);
     if (e1->type != Int || e2->type != Int) {
-        // TODO: error msg
         ERROR("non-Int expression " + string(e1->type->get_string()) + " / " + string(e2->type->get_string()) + "")
     }
 
@@ -868,14 +944,14 @@ int object_class::trav(char* filename, SymTab* symtab, int padding) {
         return 0;
     }
 
-    const auto id = symtab->lookup(name->get_string());
+    auto id = lookup_identifier(symtab, name);
 
     if (!id) {
         ERROR("Undeclared identifier " + string(name->get_string()) + ".")
         type = Object;
         return errors;
     }
-    
+
     type = idtable.add_string(typetable[*id]->get_string());
 
     return errors;

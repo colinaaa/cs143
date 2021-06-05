@@ -33,6 +33,8 @@ public:
   ostream& semant_error(Symbol filename, tree_node *t);
 };
 
+string method_name(const Symbol class_name, const Symbol name);
+int* lookup_identifier(SymTab* symtab, Symbol name);
 
 #endif
 
