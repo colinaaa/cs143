@@ -127,8 +127,6 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 					       single_Features(method(type_name, nil_Formals(), Str, no_expr()))),
 			       single_Features(method(copy, nil_Formals(), SELF_TYPE, no_expr()))),
 	       filename);
-    Object_class->build_graph();
-    symtab->addid(Object_class->get_name(), new int(new_id()));
 
     // 
     // The IO class inherits from Object. Its methods are
@@ -150,9 +148,6 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 					       single_Features(method(in_string, nil_Formals(), Str, no_expr()))),
 			       single_Features(method(in_int, nil_Formals(), Int, no_expr()))),
 	       filename);  
-    IO_class->build_graph();
-    symtab->addid(IO_class->get_name(), new int(new_id()));
-    builtin_type.insert(IO);
 
     //
     // The Int class has no methods and only a single attribute, the
@@ -163,18 +158,12 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 	       Object,
 	       single_Features(attr(val, prim_slot, no_expr())),
 	       filename);
-    Int_class->build_graph();
-    symtab->addid(Int_class->get_name(), new int(new_id()));
-    builtin_type.insert(Int);
 
     //
     // Bool also has only the "val" slot.
     //
     Class_ Bool_class =
 	class_(Bool, Object, single_Features(attr(val, prim_slot, no_expr())),filename);
-    Bool_class->build_graph();
-    symtab->addid(Bool_class->get_name(), new int(new_id()));
-    builtin_type.insert(Bool);
 
     //
     // The class Str has a number of slots and operations:
@@ -204,16 +193,36 @@ void ClassTable::install_basic_classes(SymTab* symtab) {
 						      Str, 
 						      no_expr()))),
 	       filename);
-    Str_class->build_graph();
-    symtab->addid(Str_class->get_name(), new int(new_id()));
-    builtin_type.insert(Str);
-    symtab->addid("SELF_TYPE", new int(new_id()));
-    Object_class->trav(filename->get_string(), symtab, 0);
-    IO_class->trav(filename->get_string(), symtab, 0);
-    Int_class->trav(filename->get_string(), symtab, 0);
-    Bool_class->trav(filename->get_string(), symtab, 0);
-    Str_class->trav(filename->get_string(), symtab, 0);
+    
+    // Object_class->trav(filename->get_string(), symtab, 0);
+    // IO_class->trav(filename->get_string(), symtab, 0);
+    // Int_class->trav(filename->get_string(), symtab, 0);
+    // Bool_class->trav(filename->get_string(), symtab, 0);
+    // Str_class->trav(filename->get_string(), symtab, 0);
+    symtab->addid(No_class->get_string(), new int(new_id()));
+    Object_class->build_graph(symtab);
+    Object_class->build_graph(symtab, true);
+    symtab->addid(Object_class->get_name(), new int(new_id()));
 
+    builtin_type.insert(IO);
+    IO_class->build_graph(symtab);
+    IO_class->build_graph(symtab, true);
+    symtab->addid(IO_class->get_name(), new int(new_id()));
+
+    builtin_type.insert(Int);
+    Int_class->build_graph(symtab);
+    Int_class->build_graph(symtab, true);
+    symtab->addid(Int_class->get_name(), new int(new_id()));
+
+    builtin_type.insert(Bool);
+    Bool_class->build_graph(symtab);
+    Bool_class->build_graph(symtab, true);
+    symtab->addid(Bool_class->get_name(), new int(new_id()));
+
+    builtin_type.insert(Str);
+    Str_class->build_graph(symtab);
+    Str_class->build_graph(symtab, true);
+    symtab->addid(Str_class->get_name(), new int(new_id()));
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -249,14 +258,32 @@ ostream& ClassTable::semant_error()
 } 
 
 
-int class__class::build_graph(int second) const {
+int class__class::build_graph(SymTab* symtab, int second) const {
+    int errors = 0;
     if (second) {
         auto parent = depGraph[name];
+
+        if (!parent || parent == SELF_TYPE) {
+            return 1;
+        }
+        if (!symtab->lookup(parent->get_string())) {
+            // inherit from unknown class
+            return 1;
+        }
+        current_class = name;
+        for (auto it = features->first(); features->more(it); it = features->next(it)) {
+            auto node = features->nth(it);
+            errors += node->trav(filename->get_string(), symtab, 2);
+        }
+
+        if (builtin_type.count(name) != 0 || name == Object) {
+            return 0;
+        }
 
         std::set<Symbol> visited{};
         visited.insert(name);
 
-        while (strcmp(parent->get_string(), "Object") != 0) {
+        while (parent != Object) {
             if (visited.count(parent) != 0) {
                 return -1;
             }
@@ -264,13 +291,16 @@ int class__class::build_graph(int second) const {
             parent = depGraph[parent];
         }
 
-        return 0;
+
+        return errors;
     }
     depGraph[name] = parent;
-    if (parent == SELF_TYPE || depGraph.count(parent) == 0) {
+
+    if (parent == SELF_TYPE) {
         return -1;
     }
-    return 0;
+
+    return errors;
 }
 
 
@@ -282,12 +312,12 @@ int* lookup_identifier(SymTab* symtab, Symbol name) {
     int* id = symtab->lookup(name->get_string());
     auto t = current_class;
     if (semant_debug) {
-        cout << "id: " << current_class->get_string() << "@" << name->get_string() << " " << endl;
+        cout << "id: " << t->get_string() << "@" << name->get_string() << " " << endl;
     }
 
     while (t != No_class && !id) {
         if (semant_debug) {
-            cout << "id: " << current_class->get_string() << "@" << name->get_string() << endl;
+            cout << "id: " << t->get_string() << "@" << name->get_string() << endl;
         }
         id = symtab->lookup(method_name(t, name));
         t = depGraph[t];
@@ -333,14 +363,20 @@ void program_class::semant()
         auto node = classes->nth(it);
         if (symtab->probe(node->get_name()) != NULL) {
             classtable->semant_error(node) << "dup define class: " << node->get_name() << endl;
+            // exit to avoid Object -> Object
+            cerr << "Compilation halted due to static semantic errors." << endl;
+            exit(1);
         }
         symtab->addid(node->get_name(), new int(new_id()));
-        auto res = node->build_graph();
+        auto res = node->build_graph(symtab);
         if (strcmp("Main", node->get_name()) == 0) {
             hasMain = true;
         }
-        if (res == -1) {
-            classtable->semant_error(node) << "unknown inherience class" << endl;
+        if (strcmp("SELF_TYPE", node->get_name()) == 0) {
+            classtable->semant_error(node) << "cant use SELF_TYPE as class name" << endl;
+        }
+        if (res != 0) {
+            classtable->semant_error(node) << "cant inherit from SELF_TYPE" << endl;
         }
     }
 
@@ -352,11 +388,17 @@ void program_class::semant()
         exit(1);
     }
 
+    if (semant_debug) {
+        cout << "second build_graph..." << endl;
+    }
+
     for (auto it = classes->first(); classes->more(it); it = classes->next(it)) {
         auto node = classes->nth(it);
-        auto res = node->build_graph(true);
+        auto res = node->build_graph(symtab, true);
         if (res == -1) {
             classtable->semant_error(node) << "circle inherience" << endl;
+        } else if (res != 0) {
+            classtable->semant_error(node) << "error inherience" << endl;
         }
     }
 
@@ -388,10 +430,6 @@ int class__class::trav(char* filename, SymTab* symtab, int padding) {
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav class: " << name << endl;
     current_class = name;
-    for (auto it = features->first(); features->more(it); it = features->next(it)) {
-        auto node = features->nth(it);
-        errors += node->trav(filename, symtab, padding + 2);
-    }
     symtab->enterscope();
     for (auto it = features->first(); features->more(it); it = features->next(it)) {
         auto node = features->nth(it);
@@ -420,6 +458,7 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
         visited = true;
         const auto id = new int(new_id());
 
+        auto parent_id = lookup_identifier(symtab, name);
         symtab->addid(method_name(current_class, name), id);
         typetable.emplace(*id, return_type);
         argstable[*id] = std::vector<Symbol>{};
@@ -429,6 +468,14 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
             auto node = formals->nth(it);
             auto t = node->get_type() == SELF_TYPE ? current_class : node->get_type();
             argstable[*id].push_back(t);
+        }
+
+        if (parent_id) {
+            // have inherience
+            const auto& parent_args = argstable[*parent_id];
+            if (!(parent_args == argstable[*id])) {
+                ERROR("inherit args not match")
+            }
         }
         return errors;
     }
@@ -440,7 +487,7 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
         errors += node->trav(filename, symtab, padding + 2);
     }
 
-    if (symtab->lookup(return_type->get_string()) == NULL) {
+    if (return_type != SELF_TYPE && symtab->lookup(return_type->get_string()) == NULL) {
         ERROR("Undefined return type " + string(return_type->get_string()))
     }
 
@@ -629,12 +676,11 @@ bool type_equal(const Symbol lhs, const Symbol rhs) {
     auto t1 = lhs == SELF_TYPE ? current_class : lhs;
     auto t2 = rhs == SELF_TYPE ? current_class : rhs;
 
-    while (t1 != t2) {
-        t1 = t1 == No_class ? rhs : depGraph[t1];
-        t2 = t2 == No_class ? lhs : depGraph[t2];
+    while (t1 != No_class && t1 != rhs) {
+        t1 = depGraph[t1];
     }
 
-    return !(t1 == No_class);
+    return (t1 == rhs);
 }
 
 int dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
@@ -996,6 +1042,11 @@ int new__class::trav(char* filename, SymTab* symtab, int padding) {
     // new A
     int errors = 0;
     if (semant_debug) cout << pad(padding) << "trav new: " << type_name << endl;
+
+    if (type_name == SELF_TYPE) {
+        type = SELF_TYPE;
+        return errors;
+    }
 
     if (symtab->lookup(type_name->get_string()) == NULL) {
         ERROR("'new' used with undefined class " + string(type_name->get_string()))

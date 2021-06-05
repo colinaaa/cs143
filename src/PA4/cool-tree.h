@@ -63,7 +63,7 @@ public:
     */
    virtual char* get_name() const = 0;
 
-   virtual int build_graph(int second = false) const = 0;
+   virtual int build_graph(SymTab* symtab, int second = false) const = 0;
 #ifdef Class__EXTRAS
    Class__EXTRAS
 #endif
@@ -210,7 +210,7 @@ protected:
    Features features;
    Symbol filename;
 public:
-   int build_graph(int second = false) const final;
+   int build_graph(SymTab* symtab, int second = false) const final;
    class__class(Symbol a1, Symbol a2, Features a3, Symbol a4) {
       name = a1;
       parent = a2;
