@@ -35,6 +35,7 @@ public:
 
 string method_name(const Symbol class_name, const Symbol name);
 int* lookup_identifier(SymTab* symtab, Symbol name);
+bool type_equal(const Symbol lhs, const Symbol rhs);
 
 #endif
 

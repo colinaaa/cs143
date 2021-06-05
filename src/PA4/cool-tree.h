@@ -106,6 +106,8 @@ public:
     */
    virtual int trav(char* filename, SymTab* symtab, int pad) = 0;
 
+   virtual Symbol get_type() const = 0;
+
 #ifdef Formal_EXTRAS
    Formal_EXTRAS
 #endif
@@ -301,6 +303,7 @@ public:
    Formal copy_Formal();
    void dump(ostream& stream, int n);
    int trav(char* filename, SymTab* symtab, int padding = 0) final;
+   Symbol get_type() const final { return type_decl; }
 
 #ifdef Formal_SHARED_EXTRAS
    Formal_SHARED_EXTRAS

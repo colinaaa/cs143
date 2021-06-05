@@ -14,6 +14,7 @@ extern int semant_debug;
 extern char *curr_filename;
 std::map<Symbol, Symbol> depGraph;
 std::map<int, Symbol> typetable;
+std::map<int, std::vector<Symbol>> argstable;
 std::set<Symbol> builtin_type;
 Symbol current_class;
 
@@ -421,6 +422,14 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
 
         symtab->addid(method_name(current_class, name), id);
         typetable.emplace(*id, return_type);
+        argstable[*id] = std::vector<Symbol>{};
+
+        // check args types
+        for (auto it = formals->first(); formals->more(it); it = formals->next(it)) {
+            auto node = formals->nth(it);
+            auto t = node->get_type() == SELF_TYPE ? current_class : node->get_type();
+            argstable[*id].push_back(t);
+        }
         return errors;
     }
     // new method scope
@@ -442,9 +451,29 @@ int method_class::trav(char* filename, SymTab* symtab, int padding) {
 
     // go into method body expr
     errors += expr->trav(filename, symtab, padding + 2);
+    symtab->exitscope();
+
+    // do not check return type of builtin classes
+    if (builtin_type.count(current_class) != 0 || current_class == Object) {
+        return errors;
+    }
+
+    if (return_type == SELF_TYPE && expr->type != SELF_TYPE) {
+        ERROR("Inferred return type of method does not conform to declared return type SELF_TYPE.")
+    }
+
+    // if (expr->type == SELF_TYPE || return_type == SELF_TYPE) {
+    //     if (expr->type != return_type) {
+    //         ERROR("Method body type not match return type (SELF_TYPE)")
+    //     }
+    // } else if (!type_equal(expr->type, return_type)) {
+    //     if (semant_debug) {
+    //         cout << expr->type->get_string() << " vs " << return_type->get_string() << endl;
+    //     }
+    //     ERROR("Method body type not match return type")
+    // }
 
     // exit this method scope
-    symtab->exitscope();
     return errors;
 }
 
@@ -457,14 +486,14 @@ int attr_class::trav(char* filename, SymTab* symtab, int padding) {
     if (semant_debug) cout << pad(padding) << "trav attr: " << name << endl;
 
     if (!visited) {
-        if (symtab->probe(name->get_string()) != NULL) {
+        if (lookup_identifier(symtab, name) != NULL) {
         ERROR("duplicated attr id: " + string(name->get_string()))
         }
         const auto id = new int(new_id());
         symtab->addid(method_name(current_class, name), id);
         typetable.emplace(*id, type_decl);
         visited = true;
-        return 0;
+        return errors;
     }
 
     if (strcmp(name->get_string(), "self") == 0) {
@@ -486,6 +515,14 @@ int formal_class::trav(char* filename, SymTab* symtab, int padding) {
 
     if (symtab->probe(name->get_string())) {
         ERROR("Formal parameter " + string(name->get_string()) + " is multiply defined.")
+    }
+
+    if (strcmp(name->get_string(), "self") == 0) {
+        ERROR("self can't be formal parameter")
+    }
+
+    if (type_decl == SELF_TYPE) {
+        ERROR("SELF_TYPE can't be formal type")
     }
 
     const auto id = new int(new_id());
@@ -557,12 +594,47 @@ int static_dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
         return errors;
     }
 
+    const auto& args = argstable[*id];
+    if (args.size() != static_cast<size_t>(actual->len())) {
+        ERROR("args length not match")
+        return errors;
+    }
+
+    auto i = actual->first();
+
+    for (auto it = args.begin(); it != args.end(); it++) {
+        auto arg = actual->nth(i);
+        if (arg->type != *it) {
+            ERROR("argument type not match")
+        }
+    }
+
     type = typetable[*id];
 
     if (type == SELF_TYPE) {
         type = expr->type;
     }
     return errors;
+}
+
+bool type_equal(const Symbol lhs, const Symbol rhs) {
+    if (lhs == rhs) {
+        return true;
+    }
+    // deal with Int, String, Bool, etc.
+    if (builtin_type.count(lhs) != 0 || builtin_type.count(rhs) != 0) {
+        return false;
+    }
+
+    auto t1 = lhs == SELF_TYPE ? current_class : lhs;
+    auto t2 = rhs == SELF_TYPE ? current_class : rhs;
+
+    while (t1 != t2) {
+        t1 = t1 == No_class ? rhs : depGraph[t1];
+        t2 = t2 == No_class ? lhs : depGraph[t2];
+    }
+
+    return !(t1 == No_class);
 }
 
 int dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
@@ -599,6 +671,27 @@ int dispatch_class::trav(char* filename, SymTab* symtab, int padding) {
     if (id == NULL) {
         ERROR(string(name->get_string()) + "() not found")
         return errors;
+    }
+
+    const auto& args = argstable[*id];
+    if (args.size() != static_cast<size_t>(actual->len())) {
+        if (semant_debug) {
+            cout << "table: " << args.size() << " actual: " << actual->len() << endl;
+        }
+        ERROR("args length not match")
+        return errors;
+    }
+
+    auto i = actual->first();
+
+    for (auto it = args.begin(); it != args.end(); (i = actual->next(i)), it++) {
+        auto arg = actual->nth(i);
+        if (!type_equal(arg->type, *it)) {
+            if (semant_debug) {
+                cout << arg->type->get_string() << " vs " << (*it)->get_string() << endl;
+            }
+            ERROR("argument type not match")
+        }
     }
 
     type = idtable.add_string(typetable[*id]->get_string());
